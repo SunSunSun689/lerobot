@@ -16,6 +16,18 @@ import pandas as pd
 import pyarrow.parquet as pq
 from typing import Dict, List, Any
 
+# ============================================================================
+# 夹爪单位转换配置
+# ============================================================================
+# ARX5夹爪使用无量纲控制值(0-3范围)，需要转换为物理宽度(米)
+# 转换公式: width_m = control_value * GRIPPER_SCALE_FACTOR
+#
+# ARX5夹爪实际夹持范围: 0-80mm
+# 控制值范围: 0-3.0 (SDK标准)
+# 转换系数: 0.08m / 3.0 = 0.026667
+GRIPPER_SCALE_FACTOR = 0.08 / 3.0  # 控制值 -> 米 (约0.0267)
+# ============================================================================
+
 # 导入FK计算器
 try:
     import sys
@@ -94,19 +106,19 @@ class LeRobotDataConverter:
             for episode_idx in df['episode_index'].unique():
                 episode_df = df[df['episode_index'] == episode_idx].copy()
                 episode_df = episode_df.sort_values('frame_index').reset_index(drop=True)
-                all_episodes.append((episode_idx, episode_df, parquet_file.parent.name))
+                all_episodes.append((episode_idx, episode_df, parquet_file.parent.name, parquet_file))
 
         print(f"\n总共找到 {len(all_episodes)} 个episode")
 
         # 转换每个episode
-        for episode_idx, episode_df, chunk_name in all_episodes:
+        for episode_idx, episode_df, chunk_name, parquet_file in all_episodes:
             episode_name = f"episode_{episode_idx:06d}"
             print(f"\n处理 {episode_name}...")
-            self.convert_episode(episode_df, episode_name, episode_idx, chunk_name)
+            self.convert_episode(episode_df, episode_name, episode_idx, chunk_name, parquet_file)
 
         # 生成全局元数据
         if all_episodes:
-            _, first_df, _ = all_episodes[0]
+            _, first_df, _, _ = all_episodes[0]
             self.generate_task_desc()
             self.generate_task_info(first_df)
 
@@ -115,7 +127,7 @@ class LeRobotDataConverter:
         print(f"输出目录: {self.output_dir}")
         print("=" * 70)
 
-    def convert_episode(self, df: pd.DataFrame, episode_name: str, episode_idx: int, chunk_name: str):
+    def convert_episode(self, df: pd.DataFrame, episode_name: str, episode_idx: int, chunk_name: str, parquet_file: Path):
         """转换单个episode"""
         # 创建episode目录
         episode_dir = self.output_dir / "data" / episode_name
@@ -132,11 +144,11 @@ class LeRobotDataConverter:
 
         # 1. 生成states.jsonl
         print(f"  生成 states.jsonl...")
-        self.generate_states_jsonl(df, states_dir / "states.jsonl")
+        self.generate_states_jsonl(df, states_dir / "states.jsonl", parquet_file)
 
         # 2. 生成episode_meta.json
         print(f"  生成 episode_meta.json...")
-        self.generate_episode_meta(df, episode_idx, meta_dir / "episode_meta.json")
+        self.generate_episode_meta(df, episode_idx, meta_dir / "episode_meta.json", parquet_file)
 
         # 3. 复制视频文件
         print(f"  复制视频文件...")
@@ -144,14 +156,24 @@ class LeRobotDataConverter:
 
         print(f"  ✓ {episode_name} 转换完成")
 
-    def generate_states_jsonl(self, df: pd.DataFrame, output_file: Path):
+    def generate_states_jsonl(self, df: pd.DataFrame, output_file: Path, parquet_file: Path):
         """生成states.jsonl文件"""
+        import os
+
+        # 计算绝对时间戳的基准时间
+        file_mtime = os.path.getmtime(str(parquet_file))
+        max_relative_time = float(df['timestamp'].iloc[-1])
+        base_time = file_mtime - max_relative_time
+
         with open(output_file, 'w') as f:
             for i in range(len(df)):
                 # 提取数据
                 action = df['action'].iloc[i]
                 obs_state = df['observation.state'].iloc[i]
-                timestamp = df['timestamp'].iloc[i]
+                relative_timestamp = df['timestamp'].iloc[i]
+
+                # 转换为绝对时间戳
+                absolute_timestamp = base_time + float(relative_timestamp)
 
                 # 构建state字典 (确保所有值都是Python原生类型)
                 state = {
@@ -164,14 +186,14 @@ class LeRobotDataConverter:
                     # 末端执行器位姿 (通过正运动学计算)
                     "end_effector_pose": [float(x) for x in self.get_end_effector_pose(obs_state[:6])],
 
-                    # 夹爪宽度 (从observation.state第7个值转换)
-                    "gripper_width": float(obs_state[6]),
+                    # 夹爪宽度 (从observation.state第7个值转换为米)
+                    "gripper_width": float(obs_state[6]) * GRIPPER_SCALE_FACTOR,
 
-                    # 夹爪速度 (从相邻帧计算)
-                    "gripper_velocity": float(self.calculate_gripper_velocity(df, i)),
+                    # 夹爪速度 (从相邻帧计算，转换为米/秒)
+                    "gripper_velocity": float(self.calculate_gripper_velocity(df, i)) * GRIPPER_SCALE_FACTOR,
 
-                    # 时间戳
-                    "timestamp": float(timestamp)
+                    # 时间戳 (绝对时间戳)
+                    "timestamp": absolute_timestamp
                 }
 
                 # 写入JSONL
@@ -229,12 +251,23 @@ class LeRobotDataConverter:
             # 使用占位符
             return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-    def generate_episode_meta(self, df: pd.DataFrame, episode_idx: int, output_file: Path):
+    def generate_episode_meta(self, df: pd.DataFrame, episode_idx: int, output_file: Path, parquet_file: Path):
         """生成episode_meta.json"""
-        # 获取时间信息
-        start_time = float(df['timestamp'].iloc[0])
-        end_time = float(df['timestamp'].iloc[-1])
+        import os
+
+        # 获取相对时间信息
+        relative_start = float(df['timestamp'].iloc[0])
+        relative_end = float(df['timestamp'].iloc[-1])
         frames = int(len(df))
+
+        # 计算绝对时间戳
+        # 基准时间 = 文件修改时间 - 最大相对时间戳
+        file_mtime = os.path.getmtime(str(parquet_file))
+        base_time = file_mtime - relative_end
+
+        # 绝对时间戳 = 基准时间 + 相对时间戳
+        start_time = base_time + relative_start
+        end_time = base_time + relative_end
 
         meta = {
             "episode_index": int(episode_idx),
@@ -245,6 +278,8 @@ class LeRobotDataConverter:
 
         with open(output_file, 'w') as f:
             json.dump(meta, f, indent=2)
+
+        print(f"    时间戳: {start_time:.6f} ~ {end_time:.6f} (绝对时间)")
 
     def copy_videos(self, chunk_name: str, videos_dir: Path):
         """复制并重命名视频文件"""
@@ -272,20 +307,20 @@ class LeRobotDataConverter:
         """生成task_desc.json"""
         # task_desc.json 只包含任务描述的4个核心字段
         task_desc = {
-            "task_name": self.task_name,
-            "prompt": "Leader-follower teleoperation with Feetech leader arm and ARX-X5 follower arm",
-            "scoring": "Data quality based on smoothness and accuracy of teleoperation",
+            "task_name": "arrange_flowers",
+            "prompt": "insert the three flowers on the table into the vase one by one",
+            "scoring": "\n1.5*3 points: Successfully pick up a flower.\n1.5*3 points: Successfully insert a flower into the vase.\n1.0 points: The robotic arm completes its reset.",
             "task_tag": [
-                "teleoperation",
-                "leader-follower",
-                "dual-arm",
-                "ARX5"
+                "repeated",
+                "single-arm",
+                "ARX5",
+                "precise3d"
             ]
         }
 
         output_file = self.output_dir / "task_desc.json"
         with open(output_file, 'w') as f:
-            json.dump(task_desc, f, indent=2)
+            json.dump(task_desc, f, indent=4, ensure_ascii=False)
 
         print(f"\n✓ 生成 task_desc.json")
 
@@ -296,16 +331,16 @@ class LeRobotDataConverter:
 
         # meta/task_info.json 包含完整的任务信息
         task_info = {
-            "robot_id": "arx5_leader_follower",
+            "robot_id": "arx5_1",
             "task_desc": {
-                "task_name": self.task_name,
-                "prompt": "Leader-follower teleoperation with Feetech leader arm and ARX-X5 follower arm",
-                "scoring": "Data quality based on smoothness and accuracy of teleoperation",
+                "task_name": "arrange_flowers",
+                "prompt": "insert the three flowers on the table into the vase one by one",
+                "scoring": "\n1.5*3 points: Successfully pick up a flower.\n1.5*3 points: Successfully insert a flower into the vase.\n1.0 points: The robotic arm completes its reset.",
                 "task_tag": [
-                    "teleoperation",
-                    "leader-follower",
-                    "dual-arm",
-                    "ARX5"
+                    "repeated",
+                    "single-arm",
+                    "ARX5",
+                    "precise3d"
                 ]
             },
             "video_info": {
@@ -323,7 +358,7 @@ class LeRobotDataConverter:
 
         output_file = meta_dir / "task_info.json"
         with open(output_file, 'w') as f:
-            json.dump(task_info, f, indent=2)
+            json.dump(task_info, f, indent=4, ensure_ascii=False)
 
         print(f"✓ 生成 task_info.json (fps={int(round(actual_fps))})")
 
