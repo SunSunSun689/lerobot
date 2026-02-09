@@ -114,7 +114,7 @@ class LowPassFilter1D:
 class SafeTeleopProcessor(ProcessorStep):
     """安全遥操作处理器：零位对齐 + 低通滤波 + 软限位"""
 
-    def __init__(self, fps=30):
+    def __init__(self, fps=30, follower_offset=None, transition_time=3.0):
         super().__init__()
         # 零位对齐
         self.initial_leader_pos = None
@@ -122,6 +122,18 @@ class SafeTeleopProcessor(ProcessorStep):
         self.zero_aligned = False
         self.zero_align_delay = 10
         self.cmd_count = 0
+
+        # 从臂初始位置偏移（弧度）
+        # 例如：[0, 0, 0, 0, 0, 0] 表示无偏移
+        # [π/2, 0, 0, -1.379, 0, 0] 表示 Joint0 +90°, Joint3 -79°
+        self.follower_offset = follower_offset if follower_offset is not None else [0, 0, 0, 0, 0, 0]
+
+        # 渐进式偏移参数
+        self.transition_time = transition_time  # 过渡时间（秒）
+        self.transition_steps = int(transition_time * fps)  # 过渡步数
+        self.transition_counter = 0  # 当前过渡步数
+        self.in_transition = False  # 是否在过渡期
+        self.current_offset_ratio = 0.0  # 当前偏移比例（0.0 到 1.0）
 
         # 低通滤波器
         self.lowpass_filters = [
@@ -135,11 +147,11 @@ class SafeTeleopProcessor(ProcessorStep):
 
         # 软限位（ARX-X5 官方规格）
         self.joint_limits = [
-            (-1.57, 1.57),   # joint_0: -90° to 90° (官方软件限位)
+            (-2.53, 3.05),   # joint_0: -145° to 175° (机械限位 -150° to 180°，留安全余量)
             (-0.10, 3.60),   # joint_1: -5.7° to 206.3° (官方软件限位，防止解算失效)
             (-0.09, 2.97),   # joint_2: -5° to 170°
-            (-1.48, 1.48),   # joint_3: -85° to 85° (官方软件限位)
-            (-1.40, 1.40),   # joint_4: -80° to 80°
+            (-2.97, 2.97),   # joint_3: -170° to 170° (扩大范围以支持 1:2 映射)
+            (-1.29, 1.29),   # joint_4: -74° to 74° (软件限位，机械限位 ±90°)
             (-1.66, 1.66),   # joint_5: -95° to 95°
         ]
 
@@ -151,7 +163,9 @@ class SafeTeleopProcessor(ProcessorStep):
         # transition 是一个字典
         action = transition["action"]
         observation = transition["observation"]
-        scale = np.pi / 100.0
+        # 主臂归一化值 -100~100 对应 180° 物理角度
+        # 使用 π/2 使其他关节保持 1:1，joint3 通过 2x 实现 1:2
+        scale = (np.pi / 2) / 100.0  # -100~100 → -90°~90° (180° 物理范围)
 
         # 提取主臂位置
         leader_positions = [
@@ -167,8 +181,8 @@ class SafeTeleopProcessor(ProcessorStep):
         if not self.zero_aligned:
             if self.cmd_count >= self.zero_align_delay:
                 self.initial_leader_pos = leader_positions.copy()
-                # 从观测中获取从臂初始位置
-                self.initial_follower_pos = [
+                # 从观测中获取从臂初始位置（不立即应用偏移）
+                self.initial_follower_pos_raw = [
                     observation["joint_0.pos"],
                     observation["joint_1.pos"],
                     observation["joint_2.pos"],
@@ -176,9 +190,26 @@ class SafeTeleopProcessor(ProcessorStep):
                     observation["joint_4.pos"],
                     observation["joint_5.pos"],
                 ]
+                # 目标偏移位置
+                self.initial_follower_pos = [
+                    observation["joint_0.pos"] + self.follower_offset[0],
+                    observation["joint_1.pos"] + self.follower_offset[1],
+                    observation["joint_2.pos"] + self.follower_offset[2],
+                    observation["joint_3.pos"] + self.follower_offset[3],
+                    observation["joint_4.pos"] + self.follower_offset[4],
+                    observation["joint_5.pos"] + self.follower_offset[5],
+                ]
                 self.zero_aligned = True
+                self.in_transition = any(abs(offset) > 0.01 for offset in self.follower_offset)
                 print(f"\n✓ 零位已记录")
-                print(f"  主臂初始位置: {[f'{x:.2f}' for x in self.initial_leader_pos]}")
+                print(f"  主臂初始位置 (归一化): {[f'{x:.2f}' for x in self.initial_leader_pos]}")
+                print(f"  主臂初始角度: {[f'{x*(180/200):.1f}°' for x in self.initial_leader_pos]}")
+                print(f"  从臂当前位置 (弧度): {[f'{x:.3f}' for x in self.initial_follower_pos_raw]}")
+                print(f"  从臂当前角度: {[f'{np.rad2deg(x):.1f}°' for x in self.initial_follower_pos_raw]}")
+                print(f"  从臂目标偏移: {[f'{np.rad2deg(x):.1f}°' for x in self.follower_offset]}")
+                if self.in_transition:
+                    print(f"  🔄 将在 {self.transition_time:.1f} 秒内渐进移动到偏移位置")
+                print(f"  ⚠️  Joint3 使用 1:2 映射（主臂 90° → 从臂 180°）")
             else:
                 self.cmd_count += 1
                 # 还在等待，返回当前位置（不移动）
@@ -227,10 +258,17 @@ class SafeTeleopProcessor(ProcessorStep):
             -relative_positions[0] * scale,  # joint_0 反向
             -relative_positions[1] * scale,  # joint_1 反向
             relative_positions[2] * scale,
-            relative_positions[3] * scale,
+            relative_positions[3] * scale * 2.0,  # joint_3: 1:2 映射（主臂 90° → 从臂 180°）
             relative_positions[4] * scale,
             relative_positions[5] * scale,
         ]
+
+        # 调试输出（每 100 次输出一次 joint3 的映射）
+        if self.cmd_count % 100 == 0 and abs(relative_positions[3]) > 1:
+            leader_angle = relative_positions[3] * (180/200)  # 主臂实际物理角度
+            follower_angle = np.rad2deg(target_radians[3])  # 从臂目标角度
+            ratio = follower_angle / leader_angle if leader_angle != 0 else 0
+            print(f"[Joint3] 主臂: {relative_positions[3]:.1f}单位({leader_angle:.1f}°) → 从臂: {follower_angle:.1f}° (比例:{ratio:.2f}x)")
 
         # 低通滤波
         filtered_radians = [
@@ -238,10 +276,32 @@ class SafeTeleopProcessor(ProcessorStep):
             for i in range(6)
         ]
 
+        # 渐进式偏移处理
+        if self.in_transition:
+            self.transition_counter += 1
+            self.current_offset_ratio = min(1.0, self.transition_counter / self.transition_steps)
+
+            # 每30帧显示一次进度
+            if self.transition_counter % 30 == 0:
+                progress = self.current_offset_ratio * 100
+                print(f"🔄 偏移进度: {progress:.0f}% ({self.transition_counter}/{self.transition_steps})")
+
+            # 完成过渡
+            if self.current_offset_ratio >= 1.0:
+                self.in_transition = False
+                print(f"✓ 偏移完成，开始正常遥操作")
+        else:
+            self.current_offset_ratio = 1.0
+
         # 加上初始位置并应用软限位
         final_positions = []
         for i in range(6):
-            target = self.initial_follower_pos[i] + filtered_radians[i]
+            # 使用渐进式偏移
+            current_initial_pos = (
+                self.initial_follower_pos_raw[i] * (1 - self.current_offset_ratio) +
+                self.initial_follower_pos[i] * self.current_offset_ratio
+            )
+            target = current_initial_pos + filtered_radians[i]
             lower, upper = self.joint_limits[i]
             clamped = max(lower, min(upper, target))
 
@@ -283,6 +343,13 @@ RESET_TIME_SEC = 10
 TASK_DESCRIPTION = "ARX-X5 safe teleoperation"
 HF_REPO_ID = "lerobot/arx_safe_test"
 
+# 从臂初始位置偏移（弧度）
+# 格式：[joint_0, joint_1, joint_2, joint_3, joint_4, joint_5]
+# 例如：底座旋转 +90 度 = [π/2, 0, 0, 0, 0, 0]
+# Joint3 中心点对应偏移（主臂 -43.9° 对应从臂中心）
+import math
+FOLLOWER_OFFSET = [math.pi/2, 0, 0, -1.379, 0, 0]  # Joint0 +90°, Joint3 -79° 偏移
+
 
 def main():
     print("=" * 60)
@@ -316,7 +383,7 @@ def main():
     # 配置主臂
     from pathlib import Path
     leader_config = FeetechLeaderConfig(
-        port="/dev/ttyACM2",
+        port="/dev/ttyACM0",
         motor_ids=[1, 2, 3, 4, 5, 6],
         gripper_id=7,
         use_degrees=False,
@@ -330,7 +397,7 @@ def main():
     leader = FeetechLeader(leader_config)
 
     # 创建安全处理器
-    safe_processor = SafeTeleopProcessor(fps=FPS)
+    safe_processor = SafeTeleopProcessor(fps=FPS, follower_offset=FOLLOWER_OFFSET)
 
     # 创建处理器管道
     teleop_action_processor = RobotProcessorPipeline[

@@ -32,10 +32,10 @@ else
 fi
 
 # 检查主臂串口
-if [ -e /dev/ttyACM2 ]; then
-    echo "✓ 主臂串口 (/dev/ttyACM2) 已连接"
+if [ -e /dev/ttyACM0 ]; then
+    echo "✓ 主臂串口 (/dev/ttyACM0) 已连接"
 else
-    echo "✗ 主臂串口 (/dev/ttyACM2) 未找到"
+    echo "✗ 主臂串口 (/dev/ttyACM0) 未找到"
     exit 1
 fi
 
