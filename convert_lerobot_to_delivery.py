@@ -254,7 +254,7 @@ class LeRobotDataConverter:
         video_mapping = {
             "observation.images.top": "global_realsense_rgb.mp4",
             "observation.images.wrist": "arm_realsense_rgb.mp4",
-            "observation.images.front": "front_realsense_rgb.mp4",
+            "observation.images.front": "right_realsense_rgb.mp4",
         }
 
         for src_name, dst_name in video_mapping.items():
@@ -336,8 +336,8 @@ def main():
                        default='/home/dora/lerobot/data',
                        help='输入目录 (默认: /home/dora/lerobot/data)')
     parser.add_argument('--output', '-o',
-                       default='/home/dora/lerobot/data-converted',
-                       help='输出目录 (默认: /home/dora/lerobot/data-converted)')
+                       default='/home/dora/lerobot/Arrange_flowers',
+                       help='输出目录 (默认: /home/dora/lerobot/Arrange_flowers)')
     parser.add_argument('--task-name', '-t',
                        default='leader_follower_x5',
                        help='任务名称 (默认: leader_follower_x5)')
