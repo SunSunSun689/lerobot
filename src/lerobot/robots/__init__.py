@@ -17,3 +17,15 @@
 from .config import RobotConfig
 from .robot import Robot
 from .utils import make_robot_from_config
+
+# Import robot implementations
+from .arx_follower import ARXFollower, ARXFollowerConfig
+
+__all__ = [
+    "Robot",
+    "RobotConfig",
+    "make_robot_from_config",
+    "ARXFollower",
+    "ARXFollowerConfig",
+]
+

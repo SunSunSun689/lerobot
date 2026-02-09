@@ -166,6 +166,12 @@ wandb/
 # Data folders
 data/
 outputs/
+recordings/
+data-converted/
+
+# Large files
+*.mp4
+*.zip
 
 # Translations
 *.mo

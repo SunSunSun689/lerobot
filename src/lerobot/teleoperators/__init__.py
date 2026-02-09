@@ -17,3 +17,15 @@
 from .config import TeleoperatorConfig
 from .teleoperator import Teleoperator
 from .utils import TeleopEvents, make_teleoperator_from_config
+
+# Import teleoperator implementations
+from .feetech_leader import FeetechLeader, FeetechLeaderConfig
+
+__all__ = [
+    "Teleoperator",
+    "TeleoperatorConfig",
+    "TeleopEvents",
+    "make_teleoperator_from_config",
+    "FeetechLeader",
+    "FeetechLeaderConfig",
+]

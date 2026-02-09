@@ -1,0 +1,46 @@
+# LeRobot 录制配置
+# ARX-X5 从臂 + Feetech 主臂 + 3个 RealSense 相机
+
+robot:
+  type: arx_follower
+  can_port: can0
+  arx_type: 0
+  cameras:
+    wrist:
+      type: intelrealsense
+      serial_number_or_name: "346522074669"
+      fps: 30
+      width: 640
+      height: 480
+    front:
+      type: intelrealsense
+      serial_number_or_name: "347622073355"
+      fps: 30
+      width: 640
+      height: 480
+    top:
+      type: intelrealsense
+      serial_number_or_name: "406122070147"
+      fps: 30
+      width: 640
+      height: 480
+
+teleop:
+  type: feetech_leader
+  port: /dev/ttyACM2
+  motor_ids: [1, 2, 3, 4, 5, 6]
+  gripper_id: 7
+  use_degrees: false
+  id: feetech_leader_default
+
+dataset:
+  repo_id: lerobot/arx_test  # 测试数据集
+  num_episodes: 1  # 只录制1个episode
+  fps: 30
+  single_task: "Test recording"
+  episode_time_s: 10  # 10秒自动结束
+  vcodec: h264
+
+# 显示选项
+display_data: false  # 是否显示实时数据
+play_sounds: false   # 是否播放提示音
