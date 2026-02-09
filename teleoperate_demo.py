@@ -12,8 +12,8 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
 from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
 
 
 def teleoperate_demo():
@@ -107,6 +107,7 @@ def teleoperate_demo():
     except Exception as e:
         print(f"\n✗ 错误: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         # 断开连接

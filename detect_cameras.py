@@ -34,13 +34,15 @@ def list_available_cameras(max_index=20):
                 print(f"  - FPS: {fps}")
                 print(f"  - 后端: {backend}")
 
-                available_cameras.append({
-                    "index": index,
-                    "width": width,
-                    "height": height,
-                    "fps": fps,
-                    "backend": backend,
-                })
+                available_cameras.append(
+                    {
+                        "index": index,
+                        "width": width,
+                        "height": height,
+                        "fps": fps,
+                        "backend": backend,
+                    }
+                )
             cap.release()
 
     print("\n" + "=" * 60)
@@ -63,6 +65,7 @@ def test_camera(index, duration=3):
     print(f"显示 {duration} 秒预览...")
 
     import time
+
     start_time = time.time()
     frame_count = 0
 
@@ -116,12 +119,12 @@ def generate_camera_config(cameras):
     for i, cam in enumerate(cameras[:5]):  # 最多显示 5 个
         name = camera_names[i] if i < len(camera_names) else f"camera_{i}"
         print(f'    "{name}": CameraConfig(')
-        print(f'        type="opencv",')
-        print(f'        index_or_path={cam["index"]},')
-        print(f'        width={cam["width"]},')
-        print(f'        height={cam["height"]},')
-        print(f'        fps=30,  # 建议使用 30 FPS')
-        print(f'    ),')
+        print('        type="opencv",')
+        print(f"        index_or_path={cam['index']},")
+        print(f"        width={cam['width']},")
+        print(f"        height={cam['height']},")
+        print("        fps=30,  # 建议使用 30 FPS")
+        print("    ),")
 
     print("}")
     print("```")
@@ -138,12 +141,12 @@ def generate_camera_config(cameras):
     for i, cam in enumerate(cameras[:5]):
         name = camera_names[i] if i < len(camera_names) else f"camera_{i}"
         print(f'        "{name}": CameraConfig(')
-        print(f'            type="opencv",')
-        print(f'            index_or_path={cam["index"]},')
-        print(f'            width={cam["width"]},')
-        print(f'            height={cam["height"]},')
-        print(f'            fps=30,')
-        print(f'        ),')
+        print('            type="opencv",')
+        print(f"            index_or_path={cam['index']},")
+        print(f"            width={cam['width']},")
+        print(f"            height={cam['height']},")
+        print("            fps=30,")
+        print("        ),")
 
     print("    },")
     print(")")

@@ -7,8 +7,8 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
 from lerobot.cameras.configs import CameraConfig
+from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
 
 
 def create_arx_with_realsense_config():

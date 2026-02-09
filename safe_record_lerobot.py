@@ -4,7 +4,6 @@
 """
 
 import sys
-import time
 from pathlib import Path
 
 src_path = Path(__file__).parent / "src"
@@ -14,13 +13,12 @@ from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraCon
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.datasets.pipeline_features import aggregate_pipeline_dataset_features, create_initial_features
 from lerobot.datasets.utils import combine_feature_dicts
-from lerobot.processor import RobotAction, RobotObservation, make_default_processors
+from lerobot.processor import make_default_processors
 from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
 from lerobot.scripts.lerobot_record import record_loop
 from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
 from lerobot.utils.control_utils import init_keyboard_listener
 from lerobot.utils.utils import log_say
-from lerobot.utils.visualization_utils import init_rerun
 
 # 录制配置
 NUM_EPISODES = 1  # 录制1个episode
@@ -29,6 +27,7 @@ EPISODE_TIME_SEC = 20  # 20秒
 RESET_TIME_SEC = 10
 TASK_DESCRIPTION = "ARX-X5 teleoperation with safe control"
 HF_REPO_ID = "lerobot/arx_safe_test"
+
 
 def main():
     print("=" * 60)
@@ -40,15 +39,21 @@ def main():
     camera_config = {
         "wrist": RealSenseCameraConfig(
             serial_number_or_name="346522074669",
-            fps=FPS, width=640, height=480,
+            fps=FPS,
+            width=640,
+            height=480,
         ),
         "front": RealSenseCameraConfig(
             serial_number_or_name="347622073355",
-            fps=FPS, width=640, height=480,
+            fps=FPS,
+            width=640,
+            height=480,
         ),
         "top": RealSenseCameraConfig(
             serial_number_or_name="406122070147",
-            fps=FPS, width=640, height=480,
+            fps=FPS,
+            width=640,
+            height=480,
         ),
     }
 
@@ -165,6 +170,7 @@ def main():
 
         print("✓ 录制完成")
         print(f"数据保存位置: ./data/{HF_REPO_ID}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 LeRobot数据格式转换脚本
 将LeRobot格式转换为交付标准的JSONL格式
@@ -11,10 +10,9 @@ LeRobot数据格式转换脚本
 import json
 import shutil
 from pathlib import Path
-import numpy as np
+
 import pandas as pd
 import pyarrow.parquet as pq
-from typing import Dict, List, Any
 
 # ============================================================================
 # 夹爪单位转换配置
@@ -31,8 +29,10 @@ GRIPPER_SCALE_FACTOR = 0.08 / 3.0  # 控制值 -> 米 (约0.0267)
 # 导入FK计算器
 try:
     import sys
+
     sys.path.insert(0, str(Path(__file__).parent.parent / "DoRobot-vr" / "scripts"))
     from fk_calculator import ForwardKinematicsCalculator
+
     FK_AVAILABLE = True
 except Exception as e:
     print(f"⚠ 无法导入FK计算器: {e}")
@@ -64,7 +64,7 @@ class LeRobotDataConverter:
         从时间戳计算实际fps
         """
         if len(df) > 1:
-            timestamps = df['timestamp'].values
+            timestamps = df["timestamp"].values
             total_duration = timestamps[-1] - timestamps[0]
             num_intervals = len(timestamps) - 1
 
@@ -103,9 +103,9 @@ class LeRobotDataConverter:
             df = table.to_pandas()
 
             # 按episode_index分组
-            for episode_idx in df['episode_index'].unique():
-                episode_df = df[df['episode_index'] == episode_idx].copy()
-                episode_df = episode_df.sort_values('frame_index').reset_index(drop=True)
+            for episode_idx in df["episode_index"].unique():
+                episode_df = df[df["episode_index"] == episode_idx].copy()
+                episode_df = episode_df.sort_values("frame_index").reset_index(drop=True)
                 all_episodes.append((episode_idx, episode_df, parquet_file.parent.name, parquet_file))
 
         print(f"\n总共找到 {len(all_episodes)} 个episode")
@@ -127,7 +127,9 @@ class LeRobotDataConverter:
         print(f"输出目录: {self.output_dir}")
         print("=" * 70)
 
-    def convert_episode(self, df: pd.DataFrame, episode_name: str, episode_idx: int, chunk_name: str, parquet_file: Path):
+    def convert_episode(
+        self, df: pd.DataFrame, episode_name: str, episode_idx: int, chunk_name: str, parquet_file: Path
+    ):
         """转换单个episode"""
         # 创建episode目录
         episode_dir = self.output_dir / "data" / episode_name
@@ -143,15 +145,15 @@ class LeRobotDataConverter:
         videos_dir.mkdir(exist_ok=True)
 
         # 1. 生成states.jsonl
-        print(f"  生成 states.jsonl...")
+        print("  生成 states.jsonl...")
         self.generate_states_jsonl(df, states_dir / "states.jsonl", parquet_file)
 
         # 2. 生成episode_meta.json
-        print(f"  生成 episode_meta.json...")
+        print("  生成 episode_meta.json...")
         self.generate_episode_meta(df, episode_idx, meta_dir / "episode_meta.json", parquet_file)
 
         # 3. 复制视频文件
-        print(f"  复制视频文件...")
+        print("  复制视频文件...")
         self.copy_videos(chunk_name, videos_dir)
 
         print(f"  ✓ {episode_name} 转换完成")
@@ -162,15 +164,15 @@ class LeRobotDataConverter:
 
         # 计算绝对时间戳的基准时间
         file_mtime = os.path.getmtime(str(parquet_file))
-        max_relative_time = float(df['timestamp'].iloc[-1])
+        max_relative_time = float(df["timestamp"].iloc[-1])
         base_time = file_mtime - max_relative_time
 
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             for i in range(len(df)):
                 # 提取数据
-                action = df['action'].iloc[i]
-                obs_state = df['observation.state'].iloc[i]
-                relative_timestamp = df['timestamp'].iloc[i]
+                action = df["action"].iloc[i]
+                obs_state = df["observation.state"].iloc[i]
+                relative_timestamp = df["timestamp"].iloc[i]
 
                 # 转换为绝对时间戳
                 absolute_timestamp = base_time + float(relative_timestamp)
@@ -179,27 +181,24 @@ class LeRobotDataConverter:
                 state = {
                     # 关节位置 (从observation.state提取前6个)
                     "joint_positions": [float(x) for x in obs_state[:6]],
-
                     # 关节速度 (从相邻帧计算)
-                    "joint_velocities": [float(x) for x in self.calculate_velocities(df, i, 'observation.state', 6)],
-
+                    "joint_velocities": [
+                        float(x) for x in self.calculate_velocities(df, i, "observation.state", 6)
+                    ],
                     # 末端执行器位姿 (通过正运动学计算)
                     "end_effector_pose": [float(x) for x in self.get_end_effector_pose(obs_state[:6])],
-
                     # 夹爪宽度 (从observation.state第7个值转换为米)
                     "gripper_width": float(obs_state[6]) * GRIPPER_SCALE_FACTOR,
-
                     # 夹爪速度 (从相邻帧计算，转换为米/秒)
                     "gripper_velocity": float(self.calculate_gripper_velocity(df, i)) * GRIPPER_SCALE_FACTOR,
-
                     # 时间戳 (绝对时间戳)
-                    "timestamp": absolute_timestamp
+                    "timestamp": absolute_timestamp,
                 }
 
                 # 写入JSONL
-                f.write(json.dumps(state) + '\n')
+                f.write(json.dumps(state) + "\n")
 
-    def calculate_velocities(self, df: pd.DataFrame, index: int, column: str, num_joints: int) -> List[float]:
+    def calculate_velocities(self, df: pd.DataFrame, index: int, column: str, num_joints: int) -> list[float]:
         """计算关节速度"""
         if index == 0:
             # 第一帧，速度为0
@@ -207,10 +206,10 @@ class LeRobotDataConverter:
 
         # 当前位置和上一帧位置
         current_pos = df[column].iloc[index][:num_joints]
-        prev_pos = df[column].iloc[index-1][:num_joints]
+        prev_pos = df[column].iloc[index - 1][:num_joints]
 
         # 时间差
-        dt = df['timestamp'].iloc[index] - df['timestamp'].iloc[index-1]
+        dt = df["timestamp"].iloc[index] - df["timestamp"].iloc[index - 1]
 
         if dt <= 0:
             return [0.0] * num_joints
@@ -226,18 +225,18 @@ class LeRobotDataConverter:
             return 0.0
 
         # 当前和上一帧的夹爪值
-        current_gripper = df['observation.state'].iloc[index][6]
-        prev_gripper = df['observation.state'].iloc[index-1][6]
+        current_gripper = df["observation.state"].iloc[index][6]
+        prev_gripper = df["observation.state"].iloc[index - 1][6]
 
         # 时间差
-        dt = df['timestamp'].iloc[index] - df['timestamp'].iloc[index-1]
+        dt = df["timestamp"].iloc[index] - df["timestamp"].iloc[index - 1]
 
         if dt <= 0:
             return 0.0
 
         return float((current_gripper - prev_gripper) / dt)
 
-    def get_end_effector_pose(self, joint_positions) -> List[float]:
+    def get_end_effector_pose(self, joint_positions) -> list[float]:
         """获取末端执行器位姿"""
         if self.use_real_fk:
             try:
@@ -251,13 +250,15 @@ class LeRobotDataConverter:
             # 使用占位符
             return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-    def generate_episode_meta(self, df: pd.DataFrame, episode_idx: int, output_file: Path, parquet_file: Path):
+    def generate_episode_meta(
+        self, df: pd.DataFrame, episode_idx: int, output_file: Path, parquet_file: Path
+    ):
         """生成episode_meta.json"""
         import os
 
         # 获取相对时间信息
-        relative_start = float(df['timestamp'].iloc[0])
-        relative_end = float(df['timestamp'].iloc[-1])
+        relative_start = float(df["timestamp"].iloc[0])
+        relative_end = float(df["timestamp"].iloc[-1])
         frames = int(len(df))
 
         # 计算绝对时间戳
@@ -273,10 +274,10 @@ class LeRobotDataConverter:
             "episode_index": int(episode_idx),
             "start_time": start_time,
             "end_time": end_time,
-            "frames": frames
+            "frames": frames,
         }
 
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(meta, f, indent=2)
 
         print(f"    时间戳: {start_time:.6f} ~ {end_time:.6f} (绝对时间)")
@@ -310,19 +311,14 @@ class LeRobotDataConverter:
             "task_name": "arrange_flowers",
             "prompt": "insert the three flowers on the table into the vase one by one",
             "scoring": "\n1.5*3 points: Successfully pick up a flower.\n1.5*3 points: Successfully insert a flower into the vase.\n1.0 points: The robotic arm completes its reset.",
-            "task_tag": [
-                "repeated",
-                "single-arm",
-                "ARX5",
-                "precise3d"
-            ]
+            "task_tag": ["repeated", "single-arm", "ARX5", "precise3d"],
         }
 
         output_file = self.output_dir / "task_desc.json"
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(task_desc, f, indent=4, ensure_ascii=False)
 
-        print(f"\n✓ 生成 task_desc.json")
+        print("\n✓ 生成 task_desc.json")
 
     def generate_task_info(self, df: pd.DataFrame):
         """生成task_info.json"""
@@ -336,28 +332,20 @@ class LeRobotDataConverter:
                 "task_name": "arrange_flowers",
                 "prompt": "insert the three flowers on the table into the vase one by one",
                 "scoring": "\n1.5*3 points: Successfully pick up a flower.\n1.5*3 points: Successfully insert a flower into the vase.\n1.0 points: The robotic arm completes its reset.",
-                "task_tag": [
-                    "repeated",
-                    "single-arm",
-                    "ARX5",
-                    "precise3d"
-                ]
+                "task_tag": ["repeated", "single-arm", "ARX5", "precise3d"],
             },
             "video_info": {
                 "fps": int(round(actual_fps)),  # 使用从时间戳计算的实际fps
                 "ext": "mp4",
-                "encoding": {
-                    "vcodec": "libx264",
-                    "pix_fmt": "yuv420p"
-                }
-            }
+                "encoding": {"vcodec": "libx264", "pix_fmt": "yuv420p"},
+            },
         }
 
         meta_dir = self.output_dir / "meta"
         meta_dir.mkdir(exist_ok=True)
 
         output_file = meta_dir / "task_info.json"
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(task_info, f, indent=4, ensure_ascii=False)
 
         print(f"✓ 生成 task_info.json (fps={int(round(actual_fps))})")
@@ -366,16 +354,19 @@ class LeRobotDataConverter:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='转换LeRobot数据格式为交付标准')
-    parser.add_argument('--input', '-i',
-                       default='/home/dora/lerobot/data',
-                       help='输入目录 (默认: /home/dora/lerobot/data)')
-    parser.add_argument('--output', '-o',
-                       default='/home/dora/lerobot/Arrange_flowers',
-                       help='输出目录 (默认: /home/dora/lerobot/Arrange_flowers)')
-    parser.add_argument('--task-name', '-t',
-                       default='leader_follower_x5',
-                       help='任务名称 (默认: leader_follower_x5)')
+    parser = argparse.ArgumentParser(description="转换LeRobot数据格式为交付标准")
+    parser.add_argument(
+        "--input", "-i", default="/home/dora/lerobot/data", help="输入目录 (默认: /home/dora/lerobot/data)"
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        default="/home/dora/lerobot/Arrange_flowers",
+        help="输出目录 (默认: /home/dora/lerobot/Arrange_flowers)",
+    )
+    parser.add_argument(
+        "--task-name", "-t", default="leader_follower_x5", help="任务名称 (默认: leader_follower_x5)"
+    )
 
     args = parser.parse_args()
 
@@ -386,4 +377,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

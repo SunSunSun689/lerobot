@@ -3,25 +3,27 @@
 使用安全遥操作（零位对齐）+ 直接保存数据（避免复杂依赖）
 """
 
-import sys
-import time
 import csv
 import math
-from pathlib import Path
+import sys
+import time
 from datetime import datetime
+from pathlib import Path
 
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
 import cv2
 import numpy as np
-from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
-from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig
+from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
 
 
 class LowPassFilter1D:
     """一阶低通滤波器"""
+
     def __init__(self, cutoff_freq=3.0, sample_rate=20.0):
         self.fc = cutoff_freq
         self.fs = sample_rate
@@ -69,12 +71,12 @@ class SafeRecordingSystem:
 
         # 软限位（ARX-X5 机械限位）
         self.joint_limits = [
-            (-2.44, 2.97),   # joint_0: -140° to 170°
-            (-0.09, 3.49),   # joint_1: -5° to 200°
-            (-0.09, 2.97),   # joint_2: -5° to 170°
-            (-1.22, 1.22),   # joint_3: -70° to 70°
-            (-1.40, 1.40),   # joint_4: -80° to 80°
-            (-1.66, 1.66),   # joint_5: -95° to 95°
+            (-2.44, 2.97),  # joint_0: -140° to 170°
+            (-0.09, 3.49),  # joint_1: -5° to 200°
+            (-0.09, 2.97),  # joint_2: -5° to 170°
+            (-1.22, 1.22),  # joint_3: -70° to 70°
+            (-1.40, 1.40),  # joint_4: -80° to 80°
+            (-1.66, 1.66),  # joint_5: -95° to 95°
         ]
 
         # 配置
@@ -92,15 +94,21 @@ class SafeRecordingSystem:
             cameras={
                 "wrist": RealSenseCameraConfig(
                     serial_number_or_name="346522074669",
-                    fps=fps, width=640, height=480,
+                    fps=fps,
+                    width=640,
+                    height=480,
                 ),
                 "front": RealSenseCameraConfig(
                     serial_number_or_name="347622073355",
-                    fps=fps, width=640, height=480,
+                    fps=fps,
+                    width=640,
+                    height=480,
                 ),
                 "top": RealSenseCameraConfig(
                     serial_number_or_name="406122070147",
-                    fps=fps, width=640, height=480,
+                    fps=fps,
+                    width=640,
+                    height=480,
                 ),
             },
         )
@@ -129,7 +137,7 @@ class SafeRecordingSystem:
             if self.cmd_count >= self.zero_align_delay:
                 self.initial_leader_pos = leader_positions.copy()
                 self.zero_aligned = True
-                print(f"\n✓ 零位已记录")
+                print("\n✓ 零位已记录")
                 print(f"  主臂初始位置: {[f'{x:.2f}' for x in self.initial_leader_pos]}")
             else:
                 if self.initial_follower_pos is not None:
@@ -145,10 +153,7 @@ class SafeRecordingSystem:
                 return None
 
         # 相对位置
-        relative_positions = [
-            leader_positions[i] - self.initial_leader_pos[i]
-            for i in range(6)
-        ]
+        relative_positions = [leader_positions[i] - self.initial_leader_pos[i] for i in range(6)]
 
         # 转换为弧度，joint_1 反向
         target_radians = [
@@ -161,10 +166,7 @@ class SafeRecordingSystem:
         ]
 
         # 低通滤波
-        filtered_radians = [
-            self.lowpass_filters[i].update(target_radians[i])
-            for i in range(6)
-        ]
+        filtered_radians = [self.lowpass_filters[i].update(target_radians[i]) for i in range(6)]
 
         self.last_sent_positions = filtered_radians.copy()
 
@@ -221,16 +223,15 @@ class SafeRecordingSystem:
 
         # 初始化视频写入器
         print("\n初始化视频写入器...")
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         for cam_name in ["wrist", "front", "top"]:
             self.video_writers[cam_name] = cv2.VideoWriter(
-                str(self.output_dir / f"{cam_name}.mp4"),
-                fourcc, self.fps, (640, 480)
+                str(self.output_dir / f"{cam_name}.mp4"), fourcc, self.fps, (640, 480)
             )
         print("✓ 视频写入器已创建")
 
         # 初始化CSV
-        self.csv_file = open(self.output_dir / "robot_states.csv", 'w', newline='')
+        self.csv_file = open(self.output_dir / "robot_states.csv", "w", newline="")
 
     def disconnect(self):
         """断开连接"""
@@ -370,6 +371,7 @@ def main():
     except Exception as e:
         print(f"\n✗ 错误: {e}")
         import traceback
+
         traceback.print_exc()
 
     finally:
@@ -383,10 +385,10 @@ def main():
     print(f"数据保存位置: {output_dir}")
     print()
     print("文件列表:")
-    print(f"  - wrist.mp4  (手腕相机)")
-    print(f"  - front.mp4  (前置相机)")
-    print(f"  - top.mp4    (顶部相机)")
-    print(f"  - robot_states.csv (机器人状态)")
+    print("  - wrist.mp4  (手腕相机)")
+    print("  - front.mp4  (前置相机)")
+    print("  - top.mp4    (顶部相机)")
+    print("  - robot_states.csv (机器人状态)")
     print()
 
 

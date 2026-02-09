@@ -8,14 +8,13 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-from lerobot.motors.feetech import FeetechMotorsBus, SCAN_BAUDRATES
 from lerobot.motors import Motor, MotorNormMode
+from lerobot.motors.feetech import FeetechMotorsBus
+
 
 def scan_motors_with_baudrate(port="/dev/ttyACM0", baudrate=1000000, max_id=20):
     """使用指定波特率扫描电机"""
-    temp_motors = {
-        "temp": Motor(1, "sts3215", MotorNormMode.DEGREES)
-    }
+    temp_motors = {"temp": Motor(1, "sts3215", MotorNormMode.DEGREES)}
 
     try:
         bus = FeetechMotorsBus(port=port, motors=temp_motors)
@@ -40,8 +39,9 @@ def scan_motors_with_baudrate(port="/dev/ttyACM0", baudrate=1000000, max_id=20):
         bus.disconnect()
         return found_motors
 
-    except Exception as e:
+    except Exception:
         return []
+
 
 def scan_motors(port="/dev/ttyACM0"):
     """扫描指定端口上的 Feetech 电机"""
@@ -52,7 +52,7 @@ def scan_motors(port="/dev/ttyACM0"):
     baudrates = [1000000, 115200, 57600, 38400, 19200, 9600]
 
     print(f"将尝试以下波特率: {baudrates}")
-    print(f"扫描 ID 范围: 1-30")
+    print("扫描 ID 范围: 1-30")
     print("=" * 60)
 
     all_found = []
@@ -64,7 +64,7 @@ def scan_motors(port="/dev/ttyACM0"):
             print(f"  ✓ 在波特率 {baudrate} 下找到 {len(found)} 个电机: {found}")
             all_found.extend([(motor_id, baudrate) for motor_id in found])
         else:
-            print(f"  - 未找到电机")
+            print("  - 未找到电机")
 
     print("\n" + "=" * 60)
     if all_found:
@@ -81,6 +81,7 @@ def scan_motors(port="/dev/ttyACM0"):
     print("=" * 60)
 
     return all_found
+
 
 if __name__ == "__main__":
     port = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyACM0"

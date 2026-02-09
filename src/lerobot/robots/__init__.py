@@ -14,12 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Import robot implementations
+from .arx_follower import ARXFollower, ARXFollowerConfig
 from .config import RobotConfig
 from .robot import Robot
 from .utils import make_robot_from_config
-
-# Import robot implementations
-from .arx_follower import ARXFollower, ARXFollowerConfig
 
 __all__ = [
     "Robot",
@@ -28,4 +27,3 @@ __all__ = [
     "ARXFollower",
     "ARXFollowerConfig",
 ]
-

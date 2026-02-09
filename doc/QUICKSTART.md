@@ -14,6 +14,7 @@ python3 test_arx_integration.py
 ## Hardware Setup
 
 ### 1. CAN Bus Setup
+
 ```bash
 # Check CAN interface
 ip link show can0
@@ -26,6 +27,7 @@ candump can0
 ```
 
 ### 2. Permissions
+
 ```bash
 # Add user to dialout group
 sudo usermod -a -G dialout $USER
@@ -33,9 +35,11 @@ sudo usermod -a -G dialout $USER
 ```
 
 ### 3. ARX SDK Path
+
 Default: `/home/dora/DoRobot-before/ARX_X5/py/arx_x5_python`
 
 If different, specify in config:
+
 ```python
 config = ARXFollowerConfig(
     can_port="can0",
@@ -46,6 +50,7 @@ config = ARXFollowerConfig(
 ## Basic Usage
 
 ### Python Script
+
 ```python
 from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
 
@@ -70,6 +75,7 @@ with ARXFollower(config) as robot:
 ```
 
 ### With LeRobot CLI
+
 ```bash
 # Record dataset
 lerobot-record \
@@ -121,12 +127,14 @@ ARXFollowerConfig(
 ## Examples
 
 See detailed examples in:
+
 - `examples/arx_follower_example.py`
 - `src/lerobot/robots/arx_follower/README.md`
 
 ## Troubleshooting
 
 ### Import Error
+
 ```bash
 # Make sure you're in the lerobot directory
 cd /home/dora/lerobot
@@ -136,13 +144,16 @@ export PYTHONPATH=/home/dora/lerobot/src:$PYTHONPATH
 ```
 
 ### CAN Permission Denied
+
 ```bash
 sudo chmod 666 /dev/can0
 # Or add user to dialout group (see above)
 ```
 
 ### ARX SDK Not Found
+
 Check the path in config matches your ARX SDK installation:
+
 ```python
 config = ARXFollowerConfig(
     arx_sdk_path="/correct/path/to/arx_sdk"
@@ -152,12 +163,14 @@ config = ARXFollowerConfig(
 ## Next Steps
 
 1. **Test Hardware Connection**
+
    ```bash
    cd /home/dora/lerobot
    python3 examples/arx_follower_example.py
    ```
 
 2. **Record First Dataset**
+
    ```bash
    lerobot-record \
        --robot-type arx_follower \

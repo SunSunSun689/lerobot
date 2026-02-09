@@ -26,7 +26,7 @@ def calibrate_feetech_leader():
         id="feetech_leader_default",  # 设置 ID 用于保存校准文件
     )
 
-    print(f"\n配置:")
+    print("\n配置:")
     print(f"  端口: {config.port}")
     print(f"  关节电机 ID: {config.motor_ids}")
     print(f"  夹爪电机 ID: {config.gripper_id}")
@@ -37,17 +37,17 @@ def calibrate_feetech_leader():
         leader = FeetechLeader(config)
 
         # 连接并校准
-        print(f"\n正在连接主臂...")
+        print("\n正在连接主臂...")
         leader.connect(calibrate=True)
 
-        print(f"\n✓ 校准完成！")
+        print("\n✓ 校准完成！")
         print(f"校准文件已保存到: {leader.calibration_fpath}")
 
         # 测试读取
-        print(f"\n测试读取位置...")
+        print("\n测试读取位置...")
         obs = leader.get_observation()
 
-        print(f"\n当前关节位置:")
+        print("\n当前关节位置:")
         for i in range(6):
             motor_name = f"joint_{i}"
             if f"{motor_name}.pos" in obs:
@@ -71,6 +71,7 @@ def calibrate_feetech_leader():
     except Exception as e:
         print(f"\n✗ 错误: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

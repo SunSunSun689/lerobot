@@ -49,14 +49,16 @@ def main():
             # 每10次迭代显示一次
             if iteration % 10 == 0:
                 elapsed = time.time() - start_time
-                print(f"{elapsed:8.1f} | "
-                      f"{obs['joint_0.pos']:7.2f} "
-                      f"{obs['joint_1.pos']:7.2f} "
-                      f"{obs['joint_2.pos']:7.2f} "
-                      f"{obs['joint_3.pos']:7.2f} "
-                      f"{obs['joint_4.pos']:7.2f} "
-                      f"{obs['joint_5.pos']:7.2f} | "
-                      f"{obs['gripper.pos']:7.2f}")
+                print(
+                    f"{elapsed:8.1f} | "
+                    f"{obs['joint_0.pos']:7.2f} "
+                    f"{obs['joint_1.pos']:7.2f} "
+                    f"{obs['joint_2.pos']:7.2f} "
+                    f"{obs['joint_3.pos']:7.2f} "
+                    f"{obs['joint_4.pos']:7.2f} "
+                    f"{obs['joint_5.pos']:7.2f} | "
+                    f"{obs['gripper.pos']:7.2f}"
+                )
 
             iteration += 1
             time.sleep(0.05)  # 20Hz

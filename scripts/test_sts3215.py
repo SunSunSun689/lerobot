@@ -9,6 +9,7 @@ sys.path.insert(0, str(src_path))
 
 import time
 
+
 def test_sts3215_connection(port="/dev/ttyACM0"):
     """测试 STS3215 电机连接"""
     print(f"测试 STS3215 电机连接 @ {port}")
@@ -59,7 +60,9 @@ def test_sts3215_connection(port="/dev/ttyACM0"):
 
                     # 读取当前位置
                     try:
-                        position, result, error = packet_handler.read2ByteTxRx(port_handler, motor_id, 56)  # 地址 56 是当前位置
+                        position, result, error = packet_handler.read2ByteTxRx(
+                            port_handler, motor_id, 56
+                        )  # 地址 56 是当前位置
                         if result == scs.COMM_SUCCESS:
                             print(f"    当前位置: {position}")
                     except:
@@ -70,7 +73,7 @@ def test_sts3215_connection(port="/dev/ttyACM0"):
                 port_handler.closePort()
                 return found
             else:
-                print(f"  - 未找到电机")
+                print("  - 未找到电机")
 
         port_handler.closePort()
         print("\n✗ 未找到任何电机")
@@ -84,8 +87,10 @@ def test_sts3215_connection(port="/dev/ttyACM0"):
     except Exception as e:
         print(f"\n✗ 错误: {e}")
         import traceback
+
         traceback.print_exc()
         return []
+
 
 if __name__ == "__main__":
     port = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyACM0"

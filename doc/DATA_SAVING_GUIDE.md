@@ -3,6 +3,7 @@
 ## 数据保存概述
 
 当您使用 `lerobot-record` 录制数据时，LeRobot 会自动保存：
+
 1. **机器人状态**（关节位置、夹爪位置等）
 2. **相机图像**（所有配置的相机）
 3. **元数据**（时间戳、episode 信息等）
@@ -58,6 +59,7 @@ config = ARXFollowerConfig(
 ### 数据保存流程
 
 1. **录制开始**
+
    ```bash
    lerobot-record --robot-type arx_follower --robot-config '...' --repo-id username/dataset
    ```
@@ -96,6 +98,7 @@ videos/
 ```
 
 **视频编码**：
+
 - 格式：MP4 (H.264)
 - 分辨率：与配置一致（例如 640x480）
 - 帧率：与配置一致（例如 30 FPS）
@@ -131,32 +134,33 @@ videos/
 ### 3. 元数据（meta/）
 
 #### info.json
+
 ```json
 {
-    "robot_type": "arx_follower",
-    "fps": 30,
-    "cameras": {
-        "wrist": {
-            "type": "realsense",
-            "width": 640,
-            "height": 480,
-            "fps": 30
-        },
-        "front": {
-            "type": "realsense",
-            "width": 640,
-            "height": 480,
-            "fps": 30
-        },
-        "top": {
-            "type": "realsense",
-            "width": 640,
-            "height": 480,
-            "fps": 30
-        }
+  "robot_type": "arx_follower",
+  "fps": 30,
+  "cameras": {
+    "wrist": {
+      "type": "realsense",
+      "width": 640,
+      "height": 480,
+      "fps": 30
     },
-    "total_episodes": 100,
-    "total_frames": 50000
+    "front": {
+      "type": "realsense",
+      "width": 640,
+      "height": 480,
+      "fps": 30
+    },
+    "top": {
+      "type": "realsense",
+      "width": 640,
+      "height": 480,
+      "fps": 30
+    }
+  },
+  "total_episodes": 100,
+  "total_frames": 50000
 }
 ```
 
@@ -278,27 +282,32 @@ print(f"Top image shape: {frame['observation.top'].shape}")      # (480, 640, 3)
 ### 3 相机配置的存储需求
 
 假设：
+
 - 分辨率：640x480
 - FPS：30
 - Episode 长度：10 秒
 - Episodes 数量：100
 
 **每个 episode 的存储**：
+
 - 视频（3 个相机）：约 30 MB × 3 = 90 MB
 - 状态数据：约 1 MB
 - **总计**：约 91 MB/episode
 
 **100 episodes 总存储**：
+
 - 约 9.1 GB
 
 ### 优化存储空间
 
 1. **降低分辨率**
+
    ```python
    width=320, height=240  # 减少 75% 存储
    ```
 
 2. **降低 FPS**
+
    ```python
    fps=15  # 减少 50% 存储
    ```
@@ -321,11 +330,13 @@ lerobot-upload \
 ### Q1: 3 个相机会不会导致录制变慢？
 
 **A**: 可能会，取决于：
+
 - CPU/GPU 性能
 - USB 带宽（使用 USB 3.0）
 - 磁盘写入速度
 
 **优化建议**：
+
 - 使用 SSD 而不是 HDD
 - 降低分辨率或 FPS
 - 使用硬件编码
@@ -343,11 +354,13 @@ cameras={
 ### Q3: 数据保存在哪里？
 
 **A**: 默认保存在：
+
 ```
 ~/.cache/huggingface/lerobot/datasets/username___my_dataset/
 ```
 
 可以通过环境变量修改：
+
 ```bash
 export HF_HOME=/path/to/custom/location
 ```

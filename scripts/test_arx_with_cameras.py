@@ -7,9 +7,10 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
-from lerobot.cameras.configs import CameraConfig
 import cv2
+
+from lerobot.cameras.configs import CameraConfig
+from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
 
 
 def test_arx_with_cameras():
@@ -97,6 +98,7 @@ def test_arx_with_cameras():
     except Exception as e:
         print(f"\n✗ 错误: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

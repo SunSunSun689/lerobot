@@ -12,7 +12,7 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+from lerobot.robots.arx_follower import ARXFollowerConfig
 
 
 def test_config_creation():
@@ -34,9 +34,13 @@ def test_observation_features():
 
     # We can't actually instantiate without the SDK, but we can check the config
     expected_features = [
-        "joint_0.pos", "joint_1.pos", "joint_2.pos",
-        "joint_3.pos", "joint_4.pos", "joint_5.pos",
-        "gripper.pos"
+        "joint_0.pos",
+        "joint_1.pos",
+        "joint_2.pos",
+        "joint_3.pos",
+        "joint_4.pos",
+        "joint_5.pos",
+        "gripper.pos",
     ]
     print(f"✓ Expected observation features: {expected_features}")
     return True
@@ -46,9 +50,13 @@ def test_action_features():
     """Test that action features are correctly defined."""
     print("\nTesting action features...")
     expected_features = [
-        "joint_0.pos", "joint_1.pos", "joint_2.pos",
-        "joint_3.pos", "joint_4.pos", "joint_5.pos",
-        "gripper.pos"
+        "joint_0.pos",
+        "joint_1.pos",
+        "joint_2.pos",
+        "joint_3.pos",
+        "joint_4.pos",
+        "joint_5.pos",
+        "gripper.pos",
     ]
     print(f"✓ Expected action features: {expected_features}")
     return True
@@ -76,6 +84,7 @@ def main():
     except Exception as e:
         print(f"\n✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

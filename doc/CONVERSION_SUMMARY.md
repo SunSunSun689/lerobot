@@ -78,11 +78,11 @@ data-converted/
 
 ### 视频文件
 
-| 原始名称 | 转换后名称 | 大小 |
-|---------|-----------|------|
-| observation.images.top | global_realsense_rgb.mp4 | 11M |
-| observation.images.wrist | arm_realsense_rgb.mp4 | 11M |
-| observation.images.front | front_realsense_rgb.mp4 | 12M |
+| 原始名称                 | 转换后名称               | 大小 |
+| ------------------------ | ------------------------ | ---- |
+| observation.images.top   | global_realsense_rgb.mp4 | 11M  |
+| observation.images.wrist | arm_realsense_rgb.mp4    | 11M  |
+| observation.images.front | front_realsense_rgb.mp4  | 12M  |
 
 ### states.jsonl 数据格式
 
@@ -119,6 +119,7 @@ data-converted/
 ## 下一步
 
 转换后的数据可以直接用于:
+
 - 模型训练
 - 数据分析
 - 可视化工具

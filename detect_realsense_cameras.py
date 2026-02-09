@@ -54,12 +54,14 @@ def detect_realsense_cameras():
             sensor_name = sensor.get_info(rs.camera_info.name)
             print(f"    - {sensor_name}")
 
-        cameras.append({
-            "serial": serial,
-            "name": name,
-            "product_line": product_line,
-            "firmware": firmware,
-        })
+        cameras.append(
+            {
+                "serial": serial,
+                "name": name,
+                "product_line": product_line,
+                "firmware": firmware,
+            }
+        )
         print()
 
     return cameras
@@ -88,12 +90,12 @@ def generate_config(cameras):
     for i, cam in enumerate(cameras[:3]):  # 最多 3 个
         name = camera_names[i] if i < len(camera_names) else f"camera_{i}"
         print(f'        "{name}": CameraConfig(')
-        print(f'            type="realsense",')
+        print('            type="realsense",')
         print(f'            serial_number="{cam["serial"]}",')
-        print(f'            width=640,')
-        print(f'            height=480,')
-        print(f'            fps=30,')
-        print(f'        ),')
+        print("            width=640,")
+        print("            height=480,")
+        print("            fps=30,")
+        print("        ),")
 
     print("    },")
     print(")")
@@ -111,14 +113,14 @@ def generate_config(cameras):
         name = camera_names[i] if i < len(camera_names) else f"camera_{i}"
         comma = "," if i < min(len(cameras), 3) - 1 else ""
         print(f'            "{name}": {{')
-        print(f'                "type": "realsense",')
+        print('                "type": "realsense",')
         print(f'                "serial_number": "{cam["serial"]}",')
-        print(f'                "width": 640,')
-        print(f'                "height": 480,')
-        print(f'                "fps": 30')
-        print(f'            }}{comma}')
+        print('                "width": 640,')
+        print('                "height": 480,')
+        print('                "fps": 30')
+        print(f"            }}{comma}")
 
-    print('        }')
+    print("        }")
     print("    }' \\")
     print("    --repo-id username/dataset_name")
     print("```")

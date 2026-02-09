@@ -19,6 +19,7 @@ The ARX-X5 is a 6-DOF robotic arm with an integrated gripper that communicates v
 ### 1. ARX SDK Installation
 
 The ARX SDK must be installed and accessible. By default, the integration expects it at:
+
 ```
 /home/dora/DoRobot-before/ARX_X5/py/arx_x5_python
 ```
@@ -121,17 +122,17 @@ config = ARXFollowerConfig(
 
 ### ARXFollowerConfig
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `can_port` | str | "can0" | CAN interface name |
-| `arx_type` | int | 0 | ARX arm type (0/1/2) |
-| `control_dt` | float | 0.05 | Control loop timestep (20Hz) |
-| `max_relative_target` | float\|None | None | Safety limit for action magnitude |
-| `gripper_open_pos` | int | 1000 | Gripper fully open position |
-| `gripper_close_pos` | int | 0 | Gripper fully closed position |
-| `cameras` | dict | {} | Camera configurations |
-| `disable_torque_on_disconnect` | bool | False | Disable torque on disconnect |
-| `arx_sdk_path` | str | (see above) | Path to ARX SDK |
+| Parameter                      | Type        | Default     | Description                       |
+| ------------------------------ | ----------- | ----------- | --------------------------------- |
+| `can_port`                     | str         | "can0"      | CAN interface name                |
+| `arx_type`                     | int         | 0           | ARX arm type (0/1/2)              |
+| `control_dt`                   | float       | 0.05        | Control loop timestep (20Hz)      |
+| `max_relative_target`          | float\|None | None        | Safety limit for action magnitude |
+| `gripper_open_pos`             | int         | 1000        | Gripper fully open position       |
+| `gripper_close_pos`            | int         | 0           | Gripper fully closed position     |
+| `cameras`                      | dict        | {}          | Camera configurations             |
+| `disable_torque_on_disconnect` | bool        | False       | Disable torque on disconnect      |
+| `arx_sdk_path`                 | str         | (see above) | Path to ARX SDK                   |
 
 ## Observation Space
 

@@ -7,10 +7,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
-from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
 
 print("=" * 60)
 print("LeRobot 10秒录制测试")
@@ -33,15 +33,21 @@ follower_config = ARXFollowerConfig(
     cameras={
         "wrist": RealSenseCameraConfig(
             serial_number_or_name="346522074669",
-            fps=30, width=640, height=480,
+            fps=30,
+            width=640,
+            height=480,
         ),
         "front": RealSenseCameraConfig(
             serial_number_or_name="347622073355",
-            fps=30, width=640, height=480,
+            fps=30,
+            width=640,
+            height=480,
         ),
         "top": RealSenseCameraConfig(
             serial_number_or_name="406122070147",
-            fps=30, width=640, height=480,
+            fps=30,
+            width=640,
+            height=480,
         ),
     },
 )
@@ -148,7 +154,7 @@ print("=" * 60)
 print()
 print(f"数据保存位置: {dataset.root}")
 print(f"总帧数: {frame_count}")
-print(f"视频文件:")
+print("视频文件:")
 print(f"  - {dataset.root}/videos/wrist/episode_000000.mp4")
 print(f"  - {dataset.root}/videos/front/episode_000000.mp4")
 print(f"  - {dataset.root}/videos/top/episode_000000.mp4")

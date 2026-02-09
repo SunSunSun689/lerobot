@@ -41,7 +41,7 @@ class ARXFollower(Robot):
                     width=640,
                     height=480,
                 )
-            }
+            },
         )
 
         with ARXFollower(config) as robot:
@@ -291,7 +291,9 @@ class ARXFollower(Robot):
                         f"Joint {i} action delta {delta:.3f} exceeds limit "
                         f"{self.config.max_relative_target:.3f}, clamping"
                     )
-                    joint_positions[i] = current_positions[i] + np.sign(delta) * self.config.max_relative_target
+                    joint_positions[i] = (
+                        current_positions[i] + np.sign(delta) * self.config.max_relative_target
+                    )
 
         # Send joint positions to arm
         try:
@@ -383,4 +385,3 @@ class ARXFollower(Robot):
             True (always calibrated).
         """
         return True
-

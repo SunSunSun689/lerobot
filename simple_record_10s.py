@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """简化的录制测试 - 直接保存MP4和CSV"""
 
+import csv
 import sys
 import time
-import csv
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import cv2
-import numpy as np
-from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
-from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig
+from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
 
 print("=" * 60)
 print("完整录制测试 - 20秒")
@@ -45,15 +45,21 @@ follower_config = ARXFollowerConfig(
     cameras={
         "wrist": RealSenseCameraConfig(
             serial_number_or_name="346522074669",
-            fps=30, width=640, height=480,
+            fps=30,
+            width=640,
+            height=480,
         ),
         "front": RealSenseCameraConfig(
             serial_number_or_name="347622073355",
-            fps=30, width=640, height=480,
+            fps=30,
+            width=640,
+            height=480,
         ),
         "top": RealSenseCameraConfig(
             serial_number_or_name="406122070147",
-            fps=30, width=640, height=480,
+            fps=30,
+            width=640,
+            height=480,
         ),
     },
 )
@@ -73,21 +79,12 @@ print()
 
 # 创建视频写入器
 print("初始化视频写入器...")
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 fps = 30
 video_writers = {
-    "wrist": cv2.VideoWriter(
-        str(output_dir / "wrist.mp4"),
-        fourcc, fps, (640, 480)
-    ),
-    "front": cv2.VideoWriter(
-        str(output_dir / "front.mp4"),
-        fourcc, fps, (640, 480)
-    ),
-    "top": cv2.VideoWriter(
-        str(output_dir / "top.mp4"),
-        fourcc, fps, (640, 480)
-    ),
+    "wrist": cv2.VideoWriter(str(output_dir / "wrist.mp4"), fourcc, fps, (640, 480)),
+    "front": cv2.VideoWriter(str(output_dir / "front.mp4"), fourcc, fps, (640, 480)),
+    "top": cv2.VideoWriter(str(output_dir / "top.mp4"), fourcc, fps, (640, 480)),
 }
 print("✓ 视频写入器已创建")
 print()
@@ -95,7 +92,7 @@ print()
 # 创建CSV文件
 csv_file = output_dir / "robot_states.csv"
 csv_writer = None
-csv_handle = open(csv_file, 'w', newline='')
+csv_handle = open(csv_file, "w", newline="")
 
 print("=" * 60)
 print("开始录制 - 20秒")
@@ -175,6 +172,7 @@ except KeyboardInterrupt:
 except Exception as e:
     print(f"\n错误: {e}")
     import traceback
+
     traceback.print_exc()
 
 finally:
@@ -199,14 +197,16 @@ print(f"数据保存位置: {output_dir}")
 print(f"总帧数: {frame_count}")
 print()
 print("文件列表:")
-print(f"  - wrist.mp4  (手腕相机)")
-print(f"  - front.mp4  (前置相机)")
-print(f"  - top.mp4    (顶部相机)")
-print(f"  - robot_states.csv (机器人状态)")
+print("  - wrist.mp4  (手腕相机)")
+print("  - front.mp4  (前置相机)")
+print("  - top.mp4    (顶部相机)")
+print("  - robot_states.csv (机器人状态)")
 print()
 print("查看视频:")
 print(f"  vlc {output_dir}/wrist.mp4")
 print()
 print("分析视频帧率:")
-print(f"  ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 {output_dir}/wrist.mp4")
+print(
+    f"  ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 {output_dir}/wrist.mp4"
+)
 print()

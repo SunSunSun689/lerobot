@@ -15,11 +15,11 @@
 # limitations under the License.
 
 from .config import TeleoperatorConfig
-from .teleoperator import Teleoperator
-from .utils import TeleopEvents, make_teleoperator_from_config
 
 # Import teleoperator implementations
 from .feetech_leader import FeetechLeader, FeetechLeaderConfig
+from .teleoperator import Teleoperator
+from .utils import TeleopEvents, make_teleoperator_from_config
 
 __all__ = [
     "Teleoperator",

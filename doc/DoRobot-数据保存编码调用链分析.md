@@ -7,8 +7,11 @@
 ## 📋 完整调用链
 
 ### 1️⃣ 启动脚本
+
 **文件**: `scripts/run_so101.sh`
+
 - **第 625 行**: 启动主程序
+
 ```bash
 python "$PROJECT_ROOT/operating_platform/core/main.py" \
     --robot.type=so101 \
@@ -17,15 +20,19 @@ python "$PROJECT_ROOT/operating_platform/core/main.py" \
 ```
 
 ### 2️⃣ 主程序入口
+
 **文件**: `operating_platform/core/main.py`
 
 **关键代码**:
+
 - **第 40 行**: 导入 Record 类
+
 ```python
 from operating_platform.core.record import Record, RecordConfig
 ```
 
 - **第 439-445 行**: 创建 Record 实例
+
 ```python
 record = Record(
     fps=cfg.record.fps,
@@ -37,19 +44,23 @@ record = Record(
 ```
 
 - **第 464 行**: 开始录制
+
 ```python
 record.start()
 ```
 
 - **第 524 行**: 保存 episode（用户按 's' 键时）
+
 ```python
 metadata = record.save()
 ```
 
 ### 3️⃣ Record 类 - 录制控制层
+
 **文件**: `operating_platform/core/record.py`
 
 #### 3.1 初始化 (第 107-195 行)
+
 ```python
 class Record:
     def __init__(self, fps, robot, daemon, record_cfg, record_cmd):
@@ -74,6 +85,7 @@ class Record:
 ```
 
 #### 3.2 数据采集循环 (第 224-250 行)
+
 ```python
 def process(self):
     while self.running:
@@ -92,6 +104,7 @@ def process(self):
 ```
 
 #### 3.3 保存入口 (第 358-374 行)
+
 ```python
 def save(self, skip_encoding: bool | None = None) -> EpisodeMetadata | dict:
     """保存 episode - 默认异步，需要时回退到同步"""
@@ -105,6 +118,7 @@ def save(self, skip_encoding: bool | None = None) -> EpisodeMetadata | dict:
 ```
 
 #### 3.4 同步保存 (第 313-356 行)
+
 ```python
 def save_sync(self, skip_encoding: bool = False) -> dict:
     """同步保存方法"""
@@ -122,6 +136,7 @@ def save_sync(self, skip_encoding: bool = False) -> dict:
 ```
 
 #### 3.5 异步保存 (第 271-311 行)
+
 ```python
 def save_async(self, skip_encoding: bool = False) -> EpisodeMetadata:
     """异步保存 - 立即返回，后台处理"""
@@ -147,9 +162,11 @@ def save_async(self, skip_encoding: bool = False) -> EpisodeMetadata:
 ```
 
 ### 4️⃣ AsyncEpisodeSaver - 异步保存管理器
+
 **文件**: `operating_platform/core/async_episode_saver.py`
 
 #### 4.1 队列保存任务 (第 180-230 行)
+
 ```python
 def queue_save(self, episode_buffer, dataset, record_cfg, record_cmd, skip_encoding=False):
     """将 episode 加入保存队列"""
@@ -173,6 +190,7 @@ def queue_save(self, episode_buffer, dataset, record_cfg, record_cmd, skip_encod
 ```
 
 #### 4.2 后台保存线程 (第 250-380 行)
+
 ```python
 def _save_worker(self):
     """后台工作线程 - 处理保存队列"""
@@ -198,9 +216,11 @@ def _execute_save(self, task):
 ```
 
 ### 5️⃣ DoRobotDataset - 数据集核心层
+
 **文件**: `operating_platform/dataset/dorobot_dataset.py`
 
 #### 5.1 添加帧到 buffer (第 899-950 行)
+
 ```python
 def add_frame(self, frame: dict, task: str | None = None) -> None:
     """将帧添加到 episode buffer（内存中）"""
@@ -222,6 +242,7 @@ def add_frame(self, frame: dict, task: str | None = None) -> None:
 ```
 
 #### 5.2 保存 episode (第 955-1050 行)
+
 ```python
 def save_episode(self, episode_data: dict | None = None, skip_encoding: bool = False) -> int:
     """保存 episode 到磁盘"""
@@ -263,6 +284,7 @@ def save_episode(self, episode_data: dict | None = None, skip_encoding: bool = F
 ```
 
 #### 5.3 保存 Parquet 表格 (第 1108-1150 行)
+
 ```python
 def _save_episode_table(self, episode_buffer: dict, episode_index: int) -> None:
     """保存 episode 数据为 Parquet 文件"""
@@ -277,6 +299,7 @@ def _save_episode_table(self, episode_buffer: dict, episode_index: int) -> None:
 ```
 
 #### 5.4 编码视频 (第 1281-1312 行)
+
 ```python
 def encode_episode_videos(self, episode_index: int) -> dict:
     """使用 ffmpeg 将 PNG 帧编码为 MP4 视频"""
@@ -298,6 +321,7 @@ def encode_episode_videos(self, episode_index: int) -> dict:
 ```
 
 ### 6️⃣ 视频编码工具
+
 **文件**: `operating_platform/utils/video.py`
 
 ```python
@@ -359,24 +383,26 @@ record.py: save() → save_async() / save_sync()
 
 ## 📁 关键文件总结
 
-| 文件 | 作用 | 关键方法 |
-|------|------|----------|
-| `scripts/run_so101.sh` | 启动脚本 | 启动 main.py |
-| `core/main.py` | 主程序入口 | 创建 Record，处理用户输入 |
-| `core/record.py` | 录制控制层 | `save()`, `save_async()`, `save_sync()`, `process()` |
-| `core/async_episode_saver.py` | 异步保存管理 | `queue_save()`, `_save_worker()`, `_execute_save()` |
-| `dataset/dorobot_dataset.py` | 数据集核心 | `add_frame()`, `save_episode()`, `_save_episode_table()`, `encode_episode_videos()` |
-| `utils/video.py` | 视频编码工具 | `encode_video_frames()` |
-| `utils/dataset.py` | 数据集工具 | `build_dataset_frame()`, `hw_to_dataset_features()` |
+| 文件                          | 作用         | 关键方法                                                                            |
+| ----------------------------- | ------------ | ----------------------------------------------------------------------------------- |
+| `scripts/run_so101.sh`        | 启动脚本     | 启动 main.py                                                                        |
+| `core/main.py`                | 主程序入口   | 创建 Record，处理用户输入                                                           |
+| `core/record.py`              | 录制控制层   | `save()`, `save_async()`, `save_sync()`, `process()`                                |
+| `core/async_episode_saver.py` | 异步保存管理 | `queue_save()`, `_save_worker()`, `_execute_save()`                                 |
+| `dataset/dorobot_dataset.py`  | 数据集核心   | `add_frame()`, `save_episode()`, `_save_episode_table()`, `encode_episode_videos()` |
+| `utils/video.py`              | 视频编码工具 | `encode_video_frames()`                                                             |
+| `utils/dataset.py`            | 数据集工具   | `build_dataset_frame()`, `hw_to_dataset_features()`                                 |
 
 ---
 
 ## 🎯 数据保存格式
 
 ### Parquet 文件
+
 **位置**: `data/chunk-{episode_idx:03d}/episode_{episode_idx:06d}.parquet`
 
 **内容**:
+
 - `index`: 全局帧索引
 - `episode_index`: episode 索引
 - `timestamp`: 时间戳
@@ -385,17 +411,21 @@ record.py: save() → save_async() / save_sync()
 - `action.*`: 动作数据（目标关节位置等）
 
 ### 视频文件
+
 **位置**: `videos/{camera_name}/episode_{episode_idx:06d}.mp4`
 
 **编码参数**:
+
 - 编码器: libx264
 - 像素格式: yuv420p
 - 帧率: 30 FPS（可配置）
 
 ### 元数据文件
+
 **位置**: `meta_data/info.json`
 
 **内容**:
+
 - 数据集版本
 - 机器人类型
 - FPS
@@ -409,26 +439,31 @@ record.py: save() → save_async() / save_sync()
 ## ⚙️ 编码模式
 
 ### 1. 本地编码模式 (CLOUD=0)
+
 - `skip_encoding=False`
 - 本地编码视频
 - 不上传
 
 ### 2. 云端原始模式 (CLOUD=1)
+
 - `skip_encoding=True`
 - 保存原始 PNG
 - 上传到云端编码
 
 ### 3. 边缘服务器模式 (CLOUD=2)
+
 - `skip_encoding=True`
 - 保存原始 PNG
 - rsync 到边缘服务器
 
 ### 4. 云端编码模式 (CLOUD=3)
+
 - `skip_encoding=False`
 - 本地编码视频
 - 上传编码后的视频
 
 ### 4. 本地原始模式 (CLOUD=4)
+
 - `skip_encoding=True`
 - 保存原始 PNG
 - 不编码，不上传
@@ -438,22 +473,26 @@ record.py: save() → save_async() / save_sync()
 ## 🔍 关键技术点
 
 ### 1. 异步保存机制
+
 - 使用 `AsyncEpisodeSaver` 管理后台保存队列
 - 深拷贝 episode buffer 避免数据竞争
 - 使用锁保护 buffer 切换操作
 - 支持重试机制（最多 3 次）
 
 ### 2. 图像写入
+
 - 使用多进程/多线程并行写入 PNG
 - 每个相机独立的写入队列
 - 等待机制确保图像写入完成后再编码
 
 ### 3. 视频编码
+
 - 使用 ffmpeg 的 libx264 编码器
 - 支持跳过编码（云端模式）
 - 编码完成后删除原始 PNG（可选）
 
 ### 4. 数据验证
+
 - 帧数据验证（特征匹配）
 - Episode buffer 验证（完整性检查）
 - 时间戳同步检查
@@ -462,4 +501,3 @@ record.py: save() → save_async() / save_sync()
 
 **文档创建时间**: 2026-02-09
 **分析版本**: DoRobot-before (v0.2.99)
-

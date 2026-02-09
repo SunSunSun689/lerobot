@@ -26,7 +26,7 @@ def test_feetech_leader():
         id="feetech_leader_default",  # 使用已有的校准文件
     )
 
-    print(f"\n配置:")
+    print("\n配置:")
     print(f"  端口: {config.port}")
     print(f"  关节电机 ID: {config.motor_ids}")
     print(f"  夹爪电机 ID: {config.gripper_id}")
@@ -34,18 +34,18 @@ def test_feetech_leader():
 
     try:
         # 连接主臂
-        print(f"\n正在连接主臂...")
+        print("\n正在连接主臂...")
         leader = FeetechLeader(config)
         leader.connect(calibrate=False)  # 使用已有校准文件，不重新校准
 
-        print(f"✓ 主臂已连接")
+        print("✓ 主臂已连接")
         print(f"✓ 使用校准文件: {leader.calibration_fpath}")
 
         # 读取当前位置
-        print(f"\n读取当前位置...")
+        print("\n读取当前位置...")
         obs = leader.get_observation()
 
-        print(f"\n当前关节位置:")
+        print("\n当前关节位置:")
         for i in range(6):
             motor_name = f"joint_{i}"
             if f"{motor_name}.pos" in obs:
@@ -55,9 +55,9 @@ def test_feetech_leader():
             print(f"  gripper: {obs['gripper.pos']:.2f}")
 
         # 断开连接
-        print(f"\n断开连接...")
+        print("\n断开连接...")
         leader.disconnect()
-        print(f"✓ 主臂已断开")
+        print("✓ 主臂已断开")
 
         print("\n" + "=" * 60)
         print("✓ 测试成功！")
@@ -68,6 +68,7 @@ def test_feetech_leader():
     except Exception as e:
         print(f"\n✗ 错误: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

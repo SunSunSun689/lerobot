@@ -8,22 +8,24 @@
 4. 软限位保护 - 防止超出机械范围
 """
 
+import math
 import sys
 import time
-import math
 from pathlib import Path
 
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
 import numpy as np
-from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
-from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig
+from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
+from lerobot.teleoperators.feetech_leader import FeetechLeader, FeetechLeaderConfig
 
 
 class LowPassFilter1D:
     """一阶低通滤波器，用于关节位置平滑"""
+
     def __init__(self, cutoff_freq=3.0, sample_rate=20.0):
         """
         cutoff_freq: 截止频率（Hz），越小越平滑但响应越慢
@@ -81,22 +83,22 @@ class SafeTeleoperationSystem:
 
         # 死区阈值（弧度）
         self.deadband_thresholds = [
-            0.0,     # joint_0 基座 - 无死区
-            0.017,   # joint_1 肩部 - 1度
-            0.012,   # joint_2 肘部 - 0.7度
-            0.026,   # joint_3 腕部 - 1.5度
-            0.026,   # joint_4 腕部 - 1.5度
-            0.026,   # joint_5 腕部 - 1.5度
+            0.0,  # joint_0 基座 - 无死区
+            0.017,  # joint_1 肩部 - 1度
+            0.012,  # joint_2 肘部 - 0.7度
+            0.026,  # joint_3 腕部 - 1.5度
+            0.026,  # joint_4 腕部 - 1.5度
+            0.026,  # joint_5 腕部 - 1.5度
         ]
 
         # 软限位（弧度）- ARX X5机械限位
         self.joint_limits = [
-            (-2.44, 2.97),   # joint_0: -140° to 170°
-            (-0.09, 3.49),   # joint_1: -5° to 200°
-            (-0.09, 2.97),   # joint_2: -5° to 170°
-            (-1.22, 1.22),   # joint_3: -70° to 70°
-            (-1.40, 1.40),   # joint_4: -80° to 80°
-            (-1.66, 1.66),   # joint_5: -95° to 95°
+            (-2.44, 2.97),  # joint_0: -140° to 170°
+            (-0.09, 3.49),  # joint_1: -5° to 200°
+            (-0.09, 2.97),  # joint_2: -5° to 170°
+            (-1.22, 1.22),  # joint_3: -70° to 70°
+            (-1.40, 1.40),  # joint_4: -80° to 80°
+            (-1.66, 1.66),  # joint_5: -95° to 95°
         ]
 
         # 上一次发送的位置（用于死区过滤）
@@ -117,15 +119,21 @@ class SafeTeleoperationSystem:
             cameras = {
                 "wrist": RealSenseCameraConfig(
                     serial_number_or_name="346522074669",
-                    fps=30, width=640, height=480,
+                    fps=30,
+                    width=640,
+                    height=480,
                 ),
                 "front": RealSenseCameraConfig(
                     serial_number_or_name="347622073355",
-                    fps=30, width=640, height=480,
+                    fps=30,
+                    width=640,
+                    height=480,
                 ),
                 "top": RealSenseCameraConfig(
                     serial_number_or_name="406122070147",
-                    fps=30, width=640, height=480,
+                    fps=30,
+                    width=640,
+                    height=480,
                 ),
             }
 
@@ -160,7 +168,7 @@ class SafeTeleoperationSystem:
                 # 记录零位
                 self.initial_leader_pos = leader_positions.copy()
                 self.zero_aligned = True
-                print(f"\n✓ 零位已记录")
+                print("\n✓ 零位已记录")
                 print(f"  主臂初始位置: {[f'{x:.2f}' for x in self.initial_leader_pos]}")
             else:
                 # 还在等待稳定，返回当前位置（不移动）
@@ -177,27 +185,21 @@ class SafeTeleoperationSystem:
                 return None
 
         # 应用零位偏移
-        relative_positions = [
-            leader_positions[i] - self.initial_leader_pos[i]
-            for i in range(6)
-        ]
+        relative_positions = [leader_positions[i] - self.initial_leader_pos[i] for i in range(6)]
 
         # 步骤2：转换为弧度
         # joint_1 方向反转
         target_radians = [
-            relative_positions[0] * scale,      # joint_0: 正常
-            -relative_positions[1] * scale,     # joint_1: 反向
-            relative_positions[2] * scale,      # joint_2: 正常
-            relative_positions[3] * scale,      # joint_3: 正常
-            relative_positions[4] * scale,      # joint_4: 正常
-            relative_positions[5] * scale,      # joint_5: 正常
+            relative_positions[0] * scale,  # joint_0: 正常
+            -relative_positions[1] * scale,  # joint_1: 反向
+            relative_positions[2] * scale,  # joint_2: 正常
+            relative_positions[3] * scale,  # joint_3: 正常
+            relative_positions[4] * scale,  # joint_4: 正常
+            relative_positions[5] * scale,  # joint_5: 正常
         ]
 
         # 步骤3：低通滤波
-        filtered_radians = [
-            self.lowpass_filters[i].update(target_radians[i])
-            for i in range(6)
-        ]
+        filtered_radians = [self.lowpass_filters[i].update(target_radians[i]) for i in range(6)]
 
         # 步骤4：死区过滤
         if self.last_sent_positions is not None:
@@ -330,9 +332,11 @@ class SafeTeleoperationSystem:
                     if self.zero_aligned and follower_action:
                         rel_pos = follower_action["joint_0.pos"] - self.initial_follower_pos["joint_0.pos"]
                         print(f"\n时间: {elapsed:.1f}s | 频率: {freq:.1f} Hz | 命令: {self.cmd_count}")
-                        print(f"主臂 J0: {leader_obs['joint_0.pos']:6.2f} | "
-                              f"从臂相对: {np.rad2deg(rel_pos):6.1f}° | "
-                              f"从臂绝对: {np.rad2deg(follower_action['joint_0.pos']):6.1f}°")
+                        print(
+                            f"主臂 J0: {leader_obs['joint_0.pos']:6.2f} | "
+                            f"从臂相对: {np.rad2deg(rel_pos):6.1f}° | "
+                            f"从臂绝对: {np.rad2deg(follower_action['joint_0.pos']):6.1f}°"
+                        )
                     else:
                         print(f"\n⏳ 等待零位对齐... ({self.cmd_count}/{self.zero_align_delay})")
 
@@ -383,6 +387,7 @@ def main():
     except Exception as e:
         print(f"\n✗ 错误: {e}")
         import traceback
+
         traceback.print_exc()
 
     finally:

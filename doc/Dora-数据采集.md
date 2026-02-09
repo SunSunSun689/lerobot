@@ -18,12 +18,14 @@
 ## 系统概述
 
 ### 硬件组成
+
 - **主臂（Leader）**: Feetech STS3215 舵机臂
 - **从臂（Follower）**: ARX-X5 机械臂
 - **相机**: 3 个 RealSense 相机（wrist, front, top）
 - **通信**: CAN 总线（从臂）+ 串口（主臂）
 
 ### 数据格式
+
 - **LeRobot 标准格式**: Parquet + MP4 视频
 - **帧率**: 30 FPS
 - **安全机制**: 零位对齐 + 低通滤波 + 软限位保护
@@ -35,9 +37,11 @@
 ### 核心录制脚本
 
 #### 1. `safe_record_lerobot_v2.py` ⭐ **推荐使用**
+
 **功能**: 完整的安全遥操作录制系统
 
 **特点**:
+
 - ✅ 零位对齐（启动时记录初始位置）
 - ✅ 低通滤波（平滑控制）
 - ✅ 软限位保护（防止超出关节范围）
@@ -46,23 +50,28 @@
 - ✅ 支持多 episode 录制
 
 **配置**:
+
 - 最多录制: 10 个 episodes
 - 每个 episode 最长: 5 分钟
 - 数据保存路径: `lerobot/arx_safe_test`
 
 #### 2. `safe_record_lerobot.py`
+
 **功能**: 基础版安全遥操作录制
 
 **特点**:
+
 - ✅ 零位对齐
 - ✅ LeRobot 标准格式
 - ⚠️ 不支持外部控制
 - ⚠️ 固定录制 1 个 episode
 
 #### 3. `safe_record_simple.py`
+
 **功能**: 简化版录制（避免复杂依赖）
 
 **特点**:
+
 - ✅ 零位对齐 + 低通滤波
 - ✅ 直接保存 CSV + MP4
 - ⚠️ 非 LeRobot 标准格式
@@ -71,13 +80,16 @@
 ### 控制脚本
 
 #### `record_control.py`
+
 **功能**: 发送录制控制指令
 
 **工作原理**:
+
 - 通过创建 `/tmp/lerobot_control/` 目录下的标志文件发送指令
 - 配合 `safe_record_lerobot_v2.py` 使用
 
 **控制命令**:
+
 - `s` - 保存当前 episode（结束当前，开始下一个）
 - `e` - 保存并退出录制
 - `q` - 退出控制程序（不影响录制）
@@ -85,9 +97,11 @@
 ### 启动脚本
 
 #### `start_safe_record.sh`
+
 **功能**: 一键启动安全遥操作录制
 
 **自动执行**:
+
 - ✅ 检查硬件连接（CAN、串口、相机）
 - ✅ 设置环境变量（PYTHONPATH、LD_LIBRARY_PATH）
 - ✅ 启动 `safe_record_lerobot_v2.py`
@@ -101,18 +115,21 @@
 #### 步骤 1: 启动录制系统
 
 **终端 1 - 启动录制**:
+
 ```bash
 cd /home/dora/lerobot
 ./start_safe_record.sh
 ```
 
 **重要提示**:
+
 - ⚠️ 启动后保持主臂静止约 0.5 秒
 - ⚠️ 等待 "✓ 零位已记录" 提示后再移动主臂
 
 #### 步骤 2: 启动控制程序
 
 **终端 2 - 发送控制指令**:
+
 ```bash
 cd /home/dora/lerobot
 python3 record_control.py
@@ -127,6 +144,7 @@ python3 record_control.py
 #### 步骤 4: 控制录制
 
 在终端 2 输入命令：
+
 - 输入 `s` + Enter → 保存当前 episode，开始下一个
 - 输入 `e` + Enter → 保存并退出录制
 - 输入 `q` + Enter → 退出控制程序
@@ -134,6 +152,7 @@ python3 record_control.py
 #### 步骤 5: 查看数据
 
 录制完成后，数据保存在：
+
 ```
 /home/dora/lerobot/data/lerobot/arx_safe_test/
 ├── data/
@@ -188,6 +207,7 @@ camera_config = {
 ```
 
 **如何查找相机序列号**:
+
 ```bash
 python3 detect_realsense_cameras.py
 # 或
@@ -222,6 +242,7 @@ leader_config = FeetechLeaderConfig(
 ```
 
 **如何查找串口**:
+
 ```bash
 ls /dev/ttyACM*
 # 或
@@ -231,34 +252,38 @@ python3 scan_feetech_motors.py
 ### 硬件配置修改场景
 
 #### 场景 1: 更换相机
+
 1. 运行 `python3 detect_realsense_cameras.py` 获取新序列号
 2. 修改 `safe_record_lerobot_v2.py` 第 296、300、304 行的序列号
 3. 同步修改相机名称（wrist/front/top）如果位置改变
 
 #### 场景 2: 更换主臂串口
+
 1. 运行 `ls /dev/ttyACM*` 查看可用串口
 2. 修改 `safe_record_lerobot_v2.py` 第 319 行的 `port`
 3. 修改 `start_safe_record.sh` 第 35 行的检查
 
 #### 场景 3: 更换 CAN 端口
+
 1. 修改 `safe_record_lerobot_v2.py` 第 311 行的 `can_port`
 2. 修改 `start_safe_record.sh` 第 27 行的检查
 
 #### 场景 4: 修改电机 ID
+
 1. 运行 `python3 scan_feetech_motors.py` 扫描电机
 2. 修改 `safe_record_lerobot_v2.py` 第 320-321 行的 `motor_ids` 和 `gripper_id`
 
 ### 硬件配置快速参考表
 
-| 硬件组件 | 配置文件 | 行号 | 当前值 |
-|---------|---------|------|--------|
-| 手腕相机序列号 | `safe_record_lerobot_v2.py` | 296 | 347622073355 |
-| 前置相机序列号 | `safe_record_lerobot_v2.py` | 300 | 346522074669 |
-| 顶部相机序列号 | `safe_record_lerobot_v2.py` | 304 | 406122070147 |
-| CAN 端口 | `safe_record_lerobot_v2.py` | 311 | can0 |
-| 主臂串口 | `safe_record_lerobot_v2.py` | 319 | /dev/ttyACM2 |
-| 电机 ID | `safe_record_lerobot_v2.py` | 320 | [1,2,3,4,5,6] |
-| 夹爪 ID | `safe_record_lerobot_v2.py` | 321 | 7 |
+| 硬件组件       | 配置文件                    | 行号 | 当前值        |
+| -------------- | --------------------------- | ---- | ------------- |
+| 手腕相机序列号 | `safe_record_lerobot_v2.py` | 296  | 347622073355  |
+| 前置相机序列号 | `safe_record_lerobot_v2.py` | 300  | 346522074669  |
+| 顶部相机序列号 | `safe_record_lerobot_v2.py` | 304  | 406122070147  |
+| CAN 端口       | `safe_record_lerobot_v2.py` | 311  | can0          |
+| 主臂串口       | `safe_record_lerobot_v2.py` | 319  | /dev/ttyACM2  |
+| 电机 ID        | `safe_record_lerobot_v2.py` | 320  | [1,2,3,4,5,6] |
+| 夹爪 ID        | `safe_record_lerobot_v2.py` | 321  | 7             |
 
 ---
 
@@ -276,15 +301,16 @@ python3 scan_feetech_motors.py
 
 在 `safe_record_lerobot_v2.py` + `record_control.py` 中使用：
 
-| 命令 | 功能 | 说明 |
-|-----|------|------|
-| `s` | 保存当前 episode | 结束当前 episode，开始下一个 |
-| `e` | 保存并退出录制 | 完全退出录制程序 |
-| `q` | 退出控制程序 | 不影响录制，只退出控制界面 |
+| 命令 | 功能             | 说明                         |
+| ---- | ---------------- | ---------------------------- |
+| `s`  | 保存当前 episode | 结束当前 episode，开始下一个 |
+| `e`  | 保存并退出录制   | 完全退出录制程序             |
+| `q`  | 退出控制程序     | 不影响录制，只退出控制界面   |
 
 ### 控制文件位置
 
 控制系统通过以下文件通信：
+
 - `/tmp/lerobot_control/save_episode` - 保存 episode 标志
 - `/tmp/lerobot_control/exit_recording` - 退出录制标志
 
@@ -295,6 +321,7 @@ python3 scan_feetech_motors.py
 ### Q1: 启动时提示 "CAN 总线未找到"
 
 **解决方案**:
+
 ```bash
 # 检查 CAN 设备
 ip link show can0
@@ -307,6 +334,7 @@ sudo ip link set up can0
 ### Q2: 启动时提示 "主臂串口未找到"
 
 **解决方案**:
+
 ```bash
 # 查看可用串口
 ls /dev/ttyACM*
@@ -318,6 +346,7 @@ ls /dev/ttyACM*
 ### Q3: 相机无法连接
 
 **解决方案**:
+
 ```bash
 # 检查相机连接
 rs-enumerate-devices
@@ -332,11 +361,13 @@ python3 detect_realsense_cameras.py
 ### Q4: 从臂不跟随主臂运动
 
 **可能原因**:
+
 1. 未等待零位对齐完成（等待 "✓ 零位已记录" 提示）
 2. 主臂初始位置与从臂差异过大
 3. 关节限位保护触发
 
 **解决方案**:
+
 - 重启程序，确保启动时主臂静止
 - 调整主臂初始位置，使其接近从臂当前位置
 - 检查终端输出的限位警告信息
@@ -344,11 +375,13 @@ python3 detect_realsense_cameras.py
 ### Q5: 录制的数据在哪里？
 
 **数据位置**:
+
 ```
 /home/dora/lerobot/data/lerobot/arx_safe_test/
 ```
 
 **数据结构**:
+
 - `data/chunk-*/file-*.parquet` - 机器人状态数据
 - `videos/observation.images.*/chunk-*/file-*.mp4` - 视频数据
 - `meta_data/` - 元数据
@@ -356,6 +389,7 @@ python3 detect_realsense_cameras.py
 ### Q6: 如何查看录制的数据？
 
 **方法 1: 使用 LeRobot 可视化工具**:
+
 ```bash
 python -m lerobot.scripts.lerobot_dataset_viz \
     --repo-id lerobot/arx_safe_test \
@@ -363,6 +397,7 @@ python -m lerobot.scripts.lerobot_dataset_viz \
 ```
 
 **方法 2: 直接读取 Parquet 文件**:
+
 ```python
 import pandas as pd
 import pyarrow.parquet as pq
@@ -376,11 +411,13 @@ print(df.head())
 ### Q7: 控制命令没有响应
 
 **检查**:
+
 1. 确认使用的是 `safe_record_lerobot_v2.py`（不是 v1）
 2. 确认 `record_control.py` 正在运行
 3. 检查 `/tmp/lerobot_control/` 目录是否存在
 
 **解决方案**:
+
 ```bash
 # 手动创建控制目录
 mkdir -p /tmp/lerobot_control
@@ -392,6 +429,7 @@ mkdir -p /tmp/lerobot_control
 
 **修改配置**:
 编辑 `safe_record_lerobot_v2.py` 第 281 行：
+
 ```python
 EPISODE_TIME_SEC = 300  # 改为你想要的秒数
 ```
@@ -400,6 +438,7 @@ EPISODE_TIME_SEC = 300  # 改为你想要的秒数
 
 **修改配置**:
 编辑 `safe_record_lerobot_v2.py` 第 284 行：
+
 ```python
 HF_REPO_ID = "lerobot/arx_safe_test"  # 改为你的路径
 ```
@@ -412,13 +451,13 @@ HF_REPO_ID = "lerobot/arx_safe_test"  # 改为你的路径
 
 ### 相关脚本文件
 
-| 文件名 | 用途 | 位置 |
-|-------|------|------|
-| `safe_record_lerobot_v2.py` | 主录制脚本 | `/home/dora/lerobot/` |
-| `record_control.py` | 控制脚本 | `/home/dora/lerobot/` |
-| `start_safe_record.sh` | 启动脚本 | `/home/dora/lerobot/` |
-| `detect_realsense_cameras.py` | 相机检测 | `/home/dora/lerobot/` |
-| `scan_feetech_motors.py` | 电机扫描 | `/home/dora/lerobot/` |
+| 文件名                        | 用途       | 位置                  |
+| ----------------------------- | ---------- | --------------------- |
+| `safe_record_lerobot_v2.py`   | 主录制脚本 | `/home/dora/lerobot/` |
+| `record_control.py`           | 控制脚本   | `/home/dora/lerobot/` |
+| `start_safe_record.sh`        | 启动脚本   | `/home/dora/lerobot/` |
+| `detect_realsense_cameras.py` | 相机检测   | `/home/dora/lerobot/` |
+| `scan_feetech_motors.py`      | 电机扫描   | `/home/dora/lerobot/` |
 
 ### 环境变量
 

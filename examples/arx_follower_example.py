@@ -10,7 +10,6 @@ Requirements:
 """
 
 import time
-from pathlib import Path
 
 from lerobot.cameras.configs import CameraConfig
 from lerobot.robots.arx_follower import ARXFollower, ARXFollowerConfig
@@ -33,7 +32,7 @@ def example_basic_control():
 
         # Get initial observation
         obs = robot.get_observation()
-        print(f"\nInitial joint positions (radians):")
+        print("\nInitial joint positions (radians):")
         for i in range(6):
             print(f"  Joint {i}: {obs[f'joint_{i}.pos']:.3f}")
         print(f"  Gripper: {obs['gripper.pos']:.0f}")
@@ -54,7 +53,7 @@ def example_basic_control():
 
         # Get final observation
         obs = robot.get_observation()
-        print(f"\nFinal joint positions (radians):")
+        print("\nFinal joint positions (radians):")
         for i in range(6):
             print(f"  Joint {i}: {obs[f'joint_{i}.pos']:.3f}")
 
@@ -75,7 +74,7 @@ def example_with_camera():
                 height=480,
                 fps=30,
             )
-        }
+        },
     )
 
     with ARXFollower(config) as robot:
@@ -192,6 +191,7 @@ def main():
     except Exception as e:
         print(f"\n\nError: {e}")
         import traceback
+
         traceback.print_exc()
 
 
