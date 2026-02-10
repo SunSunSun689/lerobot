@@ -1,0 +1,11 @@
+{
+    "task_name": "arrange_flowers",
+    "prompt": "insert the three flowers on the table into the vase one by one",
+    "scoring": "\n1.5*3 points: Successfully pick up a flower.\n1.5*3 points: Successfully insert a flower into the vase.\n1.0 points: The robotic arm completes its reset.",
+    "task_tag": [
+        "repeated",
+        "single-arm",
+        "ARX5",
+        "precise3d"
+    ]
+}
