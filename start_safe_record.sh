@@ -32,10 +32,10 @@ else
 fi
 
 # 检查主臂串口
-if [ -e /dev/ttyACM0 ]; then
-    echo "✓ 主臂串口 (/dev/ttyACM0) 已连接"
+if [ -e /dev/ttyACM3 ]; then
+    echo "✓ 主臂串口 (/dev/ttyACM3) 已连接"
 else
-    echo "✗ 主臂串口 (/dev/ttyACM0) 未找到"
+    echo "✗ 主臂串口 (/dev/ttyACM3) 未找到"
     exit 1
 fi
 
@@ -69,7 +69,7 @@ echo "按 Ctrl+C 停止录制"
 echo ""
 
 # 运行安全遥操作录制系统（LeRobot 格式 + 安全功能）
-python3 safe_record_lerobot_v2.py
+/home/dora/miniconda3/envs/lerobot/bin/python3 safe_record_lerobot_v2.py
 
 echo ""
 echo "=========================================="

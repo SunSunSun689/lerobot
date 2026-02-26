@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+import pyrealsense2 as rs
 
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
@@ -16,10 +17,12 @@ sys.path.insert(0, str(src_path))
 CONTROL_DIR = Path("/tmp/lerobot_control")
 CONTROL_DIR.mkdir(exist_ok=True)
 SAVE_FLAG = CONTROL_DIR / "save_episode"
+NEXT_FLAG = CONTROL_DIR / "next_episode"
 EXIT_FLAG = CONTROL_DIR / "exit_recording"
 
 # 清理旧的控制文件
 SAVE_FLAG.unlink(missing_ok=True)
+NEXT_FLAG.unlink(missing_ok=True)
 EXIT_FLAG.unlink(missing_ok=True)
 
 
@@ -64,6 +67,7 @@ def init_file_based_listener():
         "exit_early": False,
         "rerecord_episode": False,
         "stop_recording": False,
+        "next_episode": False,
     }
 
     def check_control_files():
@@ -72,6 +76,11 @@ def init_file_based_listener():
             print("\n[文件控制] 收到保存指令")
             events["exit_early"] = True
             SAVE_FLAG.unlink()  # 删除标志文件
+
+        if NEXT_FLAG.exists():
+            print("\n[文件控制] 收到开始下一组指令")
+            events["next_episode"] = True
+            NEXT_FLAG.unlink()  # 删除标志文件
 
         if EXIT_FLAG.exists():
             print("\n[文件控制] 收到退出指令")
@@ -337,6 +346,22 @@ class SafeTeleopProcessor(ProcessorStep):
         """描述此步骤如何转换特征（不改变特征）"""
         return features
 
+    def reset_for_new_episode(self):
+        """新 episode 开始前重置零位对齐状态（不重新应用偏移，从当前位置继续）"""
+        self.zero_aligned = False
+        self.initial_leader_pos = None
+        self.initial_follower_pos = None
+        self.cmd_count = 0
+        self.in_transition = False
+        self.current_offset_ratio = 0.0
+        self.transition_counter = 0
+        # 清零偏移：臂已在工作位置，无需再次移动
+        self.follower_offset = [0.0] * 6
+        # 重置低通滤波器
+        for f in self.lowpass_filters:
+            f.y = None
+        print("✓ 零位对齐已重置（从当前位置继续，无偏移）")
+
 
 # 录制配置
 NUM_EPISODES = 10  # 最多录制 10 个 episodes（可用 e 键提前退出）
@@ -351,7 +376,32 @@ HF_REPO_ID = "lerobot/arx_safe_test"
 # 例如：底座旋转 +90 度 = [π/2, 0, 0, 0, 0, 0]
 # Joint3 中心点对应偏移（主臂 -43.9° 对应从臂中心）
 
-FOLLOWER_OFFSET = [math.pi / 2, 0, 0, -1.379, 0, 0]  # Joint0 +90°, Joint3 -79° 偏移
+FOLLOWER_OFFSET = [math.pi / 2, 0, 0, -1.379, 0, 0]  # Joint0 +90°, Joint3 -79°
+
+
+def _configure_cameras(serial_numbers: list[str]) -> None:
+    """固定相机参数：自动白平衡，提高锐度和对比度。"""
+    # top 相机对比度单独设置更高
+    contrast_map = {"406122070147": 70}
+    ctx = rs.context()
+    devices = {d.get_info(rs.camera_info.serial_number): d for d in ctx.query_devices()}
+    for sn in serial_numbers:
+        dev = devices.get(sn)
+        if dev is None:
+            print(f"⚠ 相机 {sn} 未找到，跳过参数设置")
+            continue
+        for sensor in dev.query_sensors():
+            name = sensor.get_info(rs.camera_info.name)
+            if "RGB" not in name and "Color" not in name.lower():
+                continue
+            try:
+                contrast = contrast_map.get(sn, 60)
+                sensor.set_option(rs.option.enable_auto_white_balance, 1)
+                sensor.set_option(rs.option.sharpness, 75)
+                sensor.set_option(rs.option.contrast, contrast)
+                print(f"✓ 相机 {sn} 参数已固定（自动白平衡 锐度=75 对比度={contrast}）")
+            except Exception as e:
+                print(f"⚠ 相机 {sn} 参数设置失败: {e}")
 
 
 def main():
@@ -393,7 +443,7 @@ def main():
     from pathlib import Path
 
     leader_config = FeetechLeaderConfig(
-        port="/dev/ttyACM0",
+        port="/dev/ttyACM3",
         motor_ids=[1, 2, 3, 4, 5, 6],
         gripper_id=7,
         use_degrees=False,
@@ -454,6 +504,7 @@ def main():
             image_writer_processes=4,
             image_writer_threads=len(camera_config) * 4,
             vcodec="h264",
+            crf=18,
         )
         print("✓ 数据集创建成功")
         print(f"  Dataset 对象: {dataset}")
@@ -473,6 +524,14 @@ def main():
         print("连接机器人...")
         follower.connect(calibrate=False)
         leader.connect(calibrate=False)
+
+        # 固定相机参数，避免自动白平衡/曝光导致画面偏色和对比度不稳定
+        _configure_cameras([
+            "347622073355",  # wrist
+            "346522074669",  # front
+            "406122070147",  # top
+        ])
+
         print("✓ 机器人已连接")
         print()
         print("⚠️  重要提示：")
@@ -491,8 +550,14 @@ def main():
         while episode_idx < NUM_EPISODES and not events["stop_recording"]:
             print(f"\n{'=' * 60}")
             print(f"开始录制 Episode {episode_idx}")
+            print(f"  events 状态: exit_early={events['exit_early']} stop_recording={events['stop_recording']}")
             print(f"{'=' * 60}\n")
             log_say(f"录制 episode {episode_idx + 1} / {NUM_EPISODES}")
+            # 确保进入 record_loop 前 exit_early 为 False
+            events["exit_early"] = False
+            # 第二轮起重置零位对齐，从当前位置继续（不重新应用偏移）
+            if episode_idx > 0:
+                safe_processor.reset_for_new_episode()
 
             try:
                 record_loop(
@@ -539,6 +604,30 @@ def main():
 
             # 重置 exit_early 标志，准备下一个 episode
             events["exit_early"] = False
+
+            # 等待环境复位确认，再开始下一组
+            if episode_idx < NUM_EPISODES and not events["stop_recording"]:
+                print(f"\n⏸  请复位环境，准备好后在控制终端按 n 开始下一组录制（Episode {episode_idx}）")
+                print("   或按 e 退出录制")
+                events["next_episode"] = False
+                # 持续发送当前位置，防止 ARX 看门狗超时断开控制
+                while not events["next_episode"] and not events["stop_recording"]:
+                    try:
+                        obs = follower.get_observation()
+                        hold_action = RobotAction({
+                            "joint_0.pos": obs["joint_0.pos"],
+                            "joint_1.pos": obs["joint_1.pos"],
+                            "joint_2.pos": obs["joint_2.pos"],
+                            "joint_3.pos": obs["joint_3.pos"],
+                            "joint_4.pos": obs["joint_4.pos"],
+                            "joint_5.pos": obs["joint_5.pos"],
+                            "gripper.pos": obs["gripper.pos"],
+                        })
+                        follower.send_action(hold_action)
+                    except Exception:
+                        pass
+                    time.sleep(1 / FPS)
+                events["next_episode"] = False
 
     finally:
         # 整合数据（将临时 PNG 转换为 MP4 和 Parquet）
