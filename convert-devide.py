@@ -17,13 +17,13 @@ import pyarrow.parquet as pq
 # ============================================================================
 # 夹爪单位转换配置
 # ============================================================================
-# ARX5夹爪使用无量纲控制值(0-5范围)，需要转换为物理宽度(米)
-# 转换公式: width_m = control_value * GRIPPER_SCALE_FACTOR
-#
-# ARX5夹爪实际夹持范围: 0-80mm
-# 控制值范围: 0-5.0 (软件限位)
-# 转换系数: 0.08m / 5.0 = 0.016
-GRIPPER_SCALE_FACTOR = 0.08 / 5.0  # 控制值 -> 米 (0.016)
+# ARX5夹爪 LeRobot 内部控制值范围（实测）：
+#   关闭 ≈ -0.025，打开 ≈ 5.09
+# 物理范围：0 ~ 80mm (0 ~ 0.08m)
+# 转换公式: width_m = (control_value - GRIPPER_CLOSED) * GRIPPER_SCALE_FACTOR
+GRIPPER_CLOSED = -0.025                                    # 关闭时控制值
+GRIPPER_OPEN   = 5.09                                      # 打开时控制值
+GRIPPER_SCALE_FACTOR = 0.08 / (GRIPPER_OPEN - GRIPPER_CLOSED)  # ≈ 0.01565
 # ============================================================================
 
 # 导入FK计算器
@@ -200,8 +200,8 @@ class LeRobotDataConverter:
                     ],
                     # 末端执行器位姿 (通过正运动学计算)
                     "end_effector_pose": [float(x) for x in self.get_end_effector_pose(obs_state[:6])],
-                    # 夹爪宽度 (从observation.state第7个值转换为米)
-                    "gripper_width": float(obs_state[6]) * GRIPPER_SCALE_FACTOR,
+                    # 夹爪宽度 (从observation.state第7个值转换为米，含偏移校正)
+                    "gripper_width": float((obs_state[6] - GRIPPER_CLOSED) * GRIPPER_SCALE_FACTOR),
                     # 夹爪速度 (从相邻帧计算，转换为米/秒)
                     "gripper_velocity": float(self.calculate_gripper_velocity(df, i)) * GRIPPER_SCALE_FACTOR,
                     # 时间戳 (绝对时间戳)

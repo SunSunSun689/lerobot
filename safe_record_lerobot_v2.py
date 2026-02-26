@@ -376,7 +376,39 @@ HF_REPO_ID = "lerobot/arx_safe_test"
 # 例如：底座旋转 +90 度 = [π/2, 0, 0, 0, 0, 0]
 # Joint3 中心点对应偏移（主臂 -43.9° 对应从臂中心）
 
-FOLLOWER_OFFSET = [math.pi / 2, 0, 0, -1.379, 0, 0]  # Joint0 +90°, Joint3 -79°
+FOLLOWER_OFFSET = [math.pi / 2, 0, 0, 0, 0, 0]  # Joint0 +90°, Joint3 中间值（物理零位）, Joint5 动态计算
+
+# 每轮标准起始位置（弧度）：预定位完成后的目标姿态
+EPISODE_START_POSITION = {
+    "joint_0.pos": math.pi / 2,  # 90°
+    "joint_1.pos": 0.0,
+    "joint_2.pos": 0.0,
+    "joint_3.pos": 0.0,
+    "joint_4.pos": 0.0,
+    "joint_5.pos": 0.0,
+    "gripper.pos": 0.0,
+}
+RETURN_TIME_SEC = 3.0  # 回位过渡时间（秒）
+
+
+def _return_to_start(follower, fps: int = 30, return_time: float = RETURN_TIME_SEC) -> None:
+    """渐进地将从臂移回标准起始位置，防止看门狗断线。"""
+    print("\n🔙 从臂回位中...")
+    steps = int(return_time * fps)
+    try:
+        obs = follower.get_observation()
+        start = {k: obs[k] for k in EPISODE_START_POSITION}
+        for i in range(steps):
+            ratio = (i + 1) / steps
+            action = RobotAction({
+                k: start[k] + (EPISODE_START_POSITION[k] - start[k]) * ratio
+                for k in EPISODE_START_POSITION
+            })
+            follower.send_action(action)
+            time.sleep(1.0 / fps)
+        print("✅ 从臂已回到起始位置")
+    except Exception as e:
+        print(f"⚠️  回位出错: {e}")
 
 
 def _configure_cameras(serial_numbers: list[str]) -> None:
@@ -533,10 +565,21 @@ def main():
         ])
 
         print("✓ 机器人已连接")
+
+        # 动态计算 joint_5 补偿：读取上电后实际位置，计算到 0° 所需偏移
+        import time as _time
+        _time.sleep(0.3)  # 等待传感器稳定
+        _obs = follower.get_observation()
+        joint5_actual = _obs["joint_5.pos"]
+        FOLLOWER_OFFSET[5] = -joint5_actual  # 补偿到 0°
+        print(f"  joint_5 上电位置: {math.degrees(joint5_actual):.1f}°，补偿偏移: {math.degrees(FOLLOWER_OFFSET[5]):.1f}°")
+        # 同步更新 safe_processor 的偏移
+        safe_processor.follower_offset = FOLLOWER_OFFSET[:]
+
         print()
         print("⚠️  重要提示：")
-        print("  启动后请保持主臂静止约0.5秒")
-        print("  等待 '✓ 零位已记录' 提示后再移动主臂")
+        print("  启动后请保持主臂静止，等待从臂完成预定位")
+        print("  预定位完成后自动开始录制第一组数据")
         print()
         print("📹 录制控制：")
         print("  在另一个终端运行: python3 record_control.py")
@@ -544,6 +587,29 @@ def main():
         print("    s - 保存当前 episode")
         print("    e - 保存并退出")
         print()
+
+        # 预定位阶段：驱动从臂完成过渡（零位对齐 + 偏移过渡），过渡完成后自动开始录制
+        print("\n🔄 预定位阶段：等待从臂完成过渡...")
+        print("  请保持主臂静止，等待 '✓ 偏移完成' 提示")
+        preposition_done = False
+        while not preposition_done and not events["stop_recording"]:
+            try:
+                obs = follower.get_observation()
+                leader_obs = leader.get_observation()
+                action_raw = RobotAction({k: leader_obs[k] for k in leader_obs})
+                obs_raw = RobotObservation({k: obs[k] for k in obs})
+                transition = {"action": action_raw, "observation": obs_raw}
+                processed = safe_processor(transition)
+                follower.send_action(processed["action"])
+                if safe_processor.zero_aligned and not safe_processor.in_transition:
+                    preposition_done = True
+                    print("\n✅ 预定位完成，自动开始数据采集")
+                    log_say("预定位完成，开始录制")
+            except Exception as e:
+                print(f"预定位出错: {e}")
+                break
+            import time
+            time.sleep(1.0 / FPS)
 
         # 录制循环
         episode_idx = 0
@@ -607,29 +673,25 @@ def main():
 
             # 等待环境复位确认，再开始下一组
             if episode_idx < NUM_EPISODES and not events["stop_recording"]:
-                print(f"\n⏸  请复位环境，准备好后在控制终端按 n 开始下一组录制（Episode {episode_idx}）")
+                # 自动回到起始位置
+                _return_to_start(follower, fps=FPS)
+                print(f"\n⏸  环境复位后在控制终端按 n 开始下一组录制（Episode {episode_idx}）")
                 print("   或按 e 退出录制")
                 events["next_episode"] = False
-                # 持续发送当前位置，防止 ARX 看门狗超时断开控制
+                # 持续保持起始位置，防止 ARX 看门狗超时断开控制
                 while not events["next_episode"] and not events["stop_recording"]:
                     try:
-                        obs = follower.get_observation()
-                        hold_action = RobotAction({
-                            "joint_0.pos": obs["joint_0.pos"],
-                            "joint_1.pos": obs["joint_1.pos"],
-                            "joint_2.pos": obs["joint_2.pos"],
-                            "joint_3.pos": obs["joint_3.pos"],
-                            "joint_4.pos": obs["joint_4.pos"],
-                            "joint_5.pos": obs["joint_5.pos"],
-                            "gripper.pos": obs["gripper.pos"],
-                        })
-                        follower.send_action(hold_action)
+                        follower.send_action(RobotAction(EPISODE_START_POSITION))
                     except Exception:
                         pass
                     time.sleep(1 / FPS)
                 events["next_episode"] = False
 
     finally:
+        # 退出前回到起始位置
+        if follower:
+            _return_to_start(follower, fps=FPS)
+
         # 整合数据（将临时 PNG 转换为 MP4 和 Parquet）
         print("\n整合数据...")
         if dataset is not None:
