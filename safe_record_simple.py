@@ -81,7 +81,7 @@ class SafeRecordingSystem:
 
         # 配置
         self.leader_config = FeetechLeaderConfig(
-            port="/dev/ttyACM2",
+            port="/dev/ttyACM0",
             motor_ids=[1, 2, 3, 4, 5, 6],
             gripper_id=7,
             use_degrees=False,

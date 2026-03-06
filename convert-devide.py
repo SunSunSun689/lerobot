@@ -163,11 +163,11 @@ class LeRobotDataConverter:
 
         # 2. 生成episode_meta.json
         print("  生成 episode_meta.json...")
-        self.generate_episode_meta(df, episode_idx, meta_dir / "episode_meta.json", parquet_file)
+        start_time = self.generate_episode_meta(df, episode_idx, meta_dir / "episode_meta.json", parquet_file)
 
         # 3. 复制视频文件
         print("  复制视频文件...")
-        self.copy_videos(chunk_name, videos_dir, global_start_frame=global_start_frame, num_frames=len(df))
+        self.copy_videos(chunk_name, videos_dir, global_start_frame=global_start_frame, num_frames=len(df), start_time=start_time)
 
         print(f"  ✓ {episode_name} 转换完成")
 
@@ -265,8 +265,8 @@ class LeRobotDataConverter:
 
     def generate_episode_meta(
         self, df: pd.DataFrame, episode_idx: int, output_file: Path, parquet_file: Path
-    ):
-        """生成episode_meta.json"""
+    ) -> float:
+        """生成episode_meta.json，返回绝对起始时间戳"""
         import os
 
         # 获取相对时间信息
@@ -294,9 +294,72 @@ class LeRobotDataConverter:
             json.dump(meta, f, indent=2)
 
         print(f"    时间戳: {start_time:.6f} ~ {end_time:.6f} (绝对时间)")
+        return start_time
 
-    def copy_videos(self, chunk_name: str, videos_dir: Path, global_start_frame: int = 0, num_frames: int = 0):
-        """裁切并重命名视频文件（按 episode 帧范围从 chunk 视频中提取）"""
+    def find_video_file(self, video_dir: Path, global_start_frame: int, num_frames: int):
+        """
+        查找包含指定帧范围的视频文件
+
+        Args:
+            video_dir: 视频文件所在目录
+            global_start_frame: 全局起始帧
+            num_frames: 需要的帧数
+
+        Returns:
+            (video_file_path, start_frame_in_video): 视频文件路径和在该文件中的起始帧
+            如果找不到，返回 (None, 0)
+        """
+        import subprocess
+
+        # 查找所有视频文件并按名称排序
+        video_files = sorted(video_dir.glob("file-*.mp4"))
+
+        if not video_files:
+            return None, 0
+
+        # 获取每个视频文件的帧数
+        cumulative_frames = 0
+        for video_file in video_files:
+            # 使用ffprobe获取视频帧数
+            cmd = [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=nb_frames",
+                "-of", "default=nokey=1:noprint_wrappers=1",
+                str(video_file)
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                print(f"    ⚠ 无法获取 {video_file.name} 的帧数")
+                continue
+
+            try:
+                video_frames = int(result.stdout.strip())
+            except ValueError:
+                print(f"    ⚠ {video_file.name} 帧数解析失败: {result.stdout.strip()}")
+                continue
+
+            # 检查目标帧范围是否在当前视频文件中
+            if global_start_frame < cumulative_frames + video_frames:
+                # 找到了包含起始帧的视频文件
+                start_in_video = global_start_frame - cumulative_frames
+
+                # 检查是否完全包含在这个文件中
+                if start_in_video + num_frames <= video_frames:
+                    return video_file, start_in_video
+                else:
+                    # 跨越多个文件，暂不支持
+                    print(f"    ⚠ Episode 跨越多个视频文件，暂不支持")
+                    return None, 0
+
+            cumulative_frames += video_frames
+
+        return None, 0
+
+    def copy_videos(self, chunk_name: str, videos_dir: Path, global_start_frame: int = 0, num_frames: int = 0, start_time: float = 0.0):
+        """裁切并重命名视频文件（按 episode 帧范围从 chunk 视频中提取），嵌入绝对时间戳元数据"""
+        import datetime
         import subprocess
 
         # 映射关系: LeRobot名称 -> 目标名称
@@ -307,15 +370,18 @@ class LeRobotDataConverter:
         }
 
         fps = 30  # 录制帧率
-        start_sec = global_start_frame / fps
-        duration_sec = num_frames / fps
+
+        # 转换为 ISO 8601 UTC 格式（ffmpeg creation_time 字段要求）
+        creation_time = datetime.datetime.utcfromtimestamp(start_time).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
 
         for src_name, dst_name in video_mapping.items():
-            src_file = self.input_dir / "videos" / src_name / chunk_name / "file-000.mp4"
+            # 查找包含该episode的视频文件
+            video_dir = self.input_dir / "videos" / src_name / chunk_name
+            src_file, start_in_video = self.find_video_file(video_dir, global_start_frame, num_frames)
             dst_file = videos_dir / dst_name
 
-            if not src_file.exists():
-                print(f"    ⚠ 未找到 {src_file}")
+            if src_file is None:
+                print(f"    ⚠ 未找到包含帧 {global_start_frame}~{global_start_frame + num_frames - 1} 的视频文件")
                 continue
 
             if num_frames == 0:
@@ -324,7 +390,13 @@ class LeRobotDataConverter:
                 print(f"    ✓ {dst_name} (完整复制)")
                 continue
 
-            # 用 ffmpeg 按时间范围裁切，保持原编码参数
+            # 计算在该视频文件中的起始时间和持续时间
+            start_sec = start_in_video / fps
+            duration_sec = num_frames / fps
+
+            # 用 ffmpeg 按时间范围裁切，同时写入绝对时间戳元数据
+            # 注意：ffmpeg 4.x 会将 creation_time 截断到秒，且自定义字段在 mp4 中被丢弃
+            # 因此用 comment 字段存储精确的 Unix 时间戳和 ISO 时间
             cmd = [
                 "ffmpeg", "-y",
                 "-ss", f"{start_sec:.6f}",
@@ -332,11 +404,12 @@ class LeRobotDataConverter:
                 "-t", f"{duration_sec:.6f}",
                 "-c:v", "libx264", "-crf", "18", "-preset", "fast",
                 "-an",
+                "-metadata", f"comment=start_timestamp={start_time:.6f} {creation_time}",
                 str(dst_file),
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
-                print(f"    ✓ {dst_name} (帧 {global_start_frame}~{global_start_frame + num_frames - 1})")
+                print(f"    ✓ {dst_name} (从 {src_file.name} 帧 {start_in_video}~{start_in_video + num_frames - 1}, start_timestamp={start_time:.3f})")
             else:
                 print(f"    ✗ {dst_name} 裁切失败: {result.stderr[-200:]}")
 

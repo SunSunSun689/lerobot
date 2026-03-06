@@ -150,11 +150,11 @@ class LeRobotDataConverter:
 
         # 2. 生成episode_meta.json
         print("  生成 episode_meta.json...")
-        self.generate_episode_meta(df, episode_idx, meta_dir / "episode_meta.json", parquet_file)
+        start_time = self.generate_episode_meta(df, episode_idx, meta_dir / "episode_meta.json", parquet_file)
 
-        # 3. 复制视频文件
+        # 3. 复制视频文件（嵌入绝对时间戳）
         print("  复制视频文件...")
-        self.copy_videos(chunk_name, videos_dir)
+        self.copy_videos(chunk_name, videos_dir, start_time)
 
         print(f"  ✓ {episode_name} 转换完成")
 
@@ -252,8 +252,8 @@ class LeRobotDataConverter:
 
     def generate_episode_meta(
         self, df: pd.DataFrame, episode_idx: int, output_file: Path, parquet_file: Path
-    ):
-        """生成episode_meta.json"""
+    ) -> float:
+        """生成episode_meta.json，返回绝对起始时间戳"""
         import os
 
         # 获取相对时间信息
@@ -281,10 +281,12 @@ class LeRobotDataConverter:
             json.dump(meta, f, indent=2)
 
         print(f"    时间戳: {start_time:.6f} ~ {end_time:.6f} (绝对时间)")
+        return start_time
 
-    def copy_videos(self, chunk_name: str, videos_dir: Path):
-        """复制并重命名视频文件"""
-        # LeRobot视频路径: videos/observation.images.*/chunk-*/file-*.mp4
+    def copy_videos(self, chunk_name: str, videos_dir: Path, start_time: float):
+        """复制并重命名视频文件，嵌入绝对时间戳元数据"""
+        import datetime
+        import subprocess
 
         # 映射关系: LeRobot名称 -> 目标名称
         video_mapping = {
@@ -293,16 +295,32 @@ class LeRobotDataConverter:
             "observation.images.front": "right_realsense_rgb.mp4",
         }
 
+        # 转换为 ISO 8601 格式（ffmpeg creation_time 字段要求）
+        creation_time = datetime.datetime.utcfromtimestamp(start_time).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+
         for src_name, dst_name in video_mapping.items():
-            # LeRobot格式: videos/observation.images.top/chunk-000/file-000.mp4
             src_file = self.input_dir / "videos" / src_name / chunk_name / "file-000.mp4"
             dst_file = videos_dir / dst_name
 
-            if src_file.exists():
-                shutil.copy2(src_file, dst_file)
-                print(f"    ✓ {dst_name}")
-            else:
+            if not src_file.exists():
                 print(f"    ⚠ 未找到 {src_file}")
+                continue
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", str(src_file),
+                "-c", "copy",
+                "-metadata", f"creation_time={creation_time}",
+                "-metadata", f"start_timestamp={start_time:.6f}",
+                str(dst_file),
+            ]
+            result = subprocess.run(cmd, capture_output=True)
+            if result.returncode == 0:
+                print(f"    ✓ {dst_name} (start_timestamp={start_time:.3f})")
+            else:
+                # ffmpeg失败时回退到直接复制
+                shutil.copy2(src_file, dst_file)
+                print(f"    ⚠ {dst_name} (ffmpeg失败，已直接复制)")
 
     def generate_task_desc(self):
         """生成task_desc.json"""

@@ -57,7 +57,7 @@ class SafeTeleoperationSystem:
 
     def __init__(
         self,
-        leader_port="/dev/ttyACM2",
+        leader_port="/dev/ttyACM0",
         follower_can_port="can0",
         enable_cameras=False,
         control_frequency=20,
@@ -371,7 +371,7 @@ def main():
 
     # 创建系统
     system = SafeTeleoperationSystem(
-        leader_port="/dev/ttyACM2",
+        leader_port="/dev/ttyACM0",
         follower_can_port="can0",
         enable_cameras=False,  # 默认禁用相机以提高性能
         control_frequency=20,

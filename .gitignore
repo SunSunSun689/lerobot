@@ -172,6 +172,19 @@ data-converted/
 # Large files
 *.mp4
 *.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.gz
+*.bz2
+
+# Dataset folders
+Arrange_flowers*/
+aimee-*/
+data-*/
+__MACOSX/
 
 # Translations
 *.mo

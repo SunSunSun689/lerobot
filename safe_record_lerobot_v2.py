@@ -1,6 +1,32 @@
 #!/usr/bin/env python3
 """安全遥操作 + LeRobot 数据录制
+
 在 LeRobot 框架内实现零位对齐、低通滤波和软限位保护
+
+主要功能：
+1. 零位对齐：首次启动时记录主臂和从臂的初始位置，建立相对映射关系
+2. 低通滤波：对主臂指令进行滤波，减少高频抖动，保护机械臂
+3. 软限位保护：限制关节运动范围，防止超出机械限位
+4. 自动回位：每个 episode 结束后自动回到标准起始位置，实现连续录制
+
+自动回位功能说明：
+- 目标位置：动态学习 Episode 0 的实际起始位置（自动适应预定位差异）
+- 回位时间：3 秒平滑过渡，避免机械臂运动过快
+- 回位策略：使用线性插值生成平滑轨迹，防止 CAN 总线看门狗超时
+- 数据记录：回位过程会被录入当前 episode 的数据中
+- 连续性保证：确保所有 episode 从相同的起始位置开始，提高数据集质量
+
+动态学习机制：
+- Episode 0 开始录制时，自动记录从臂的实际位置
+- 后续 episode 结束后，自动回位到这个记录的位置
+- 无需手动更新代码中的固定值
+- 自动适应每次运行时预定位的细微差异
+
+使用方法：
+1. 运行脚本后，保持主臂静止，等待预定位完成
+2. 预定位完成后，自动记录 Episode 0 起始位置并开始录制
+3. 录制完成后，机械臂自动回到 Episode 0 的起始位置
+4. 在控制终端按 'n' 开始下一个 episode，或按 'e' 退出
 """
 
 import math
@@ -378,43 +404,195 @@ HF_REPO_ID = "lerobot/arx_safe_test"
 
 FOLLOWER_OFFSET = [math.pi / 2, 0, 0, 0, 0, 0]  # Joint0 +90°, Joint3 中间值（物理零位）, Joint5 动态计算
 
-# 每轮标准起始位置（弧度）：预定位完成后的目标姿态
+# 每轮标准起始位置（弧度）：动态学习 Episode 0 的实际起始位置
+# 这个初始值仅作为默认值，在 Episode 0 开始录制时会被实际位置覆盖
+#
+# 工作原理：
+# 1. 预定位完成后，记录从臂的实际位置
+# 2. Episode 0 开始录制时，将这个位置保存为标准起始位置
+# 3. 后续 episode 结束后，自动回位到这个位置
+# 4. 这样可以自动适应每次预定位的细微差异
+#
+# 注意：这个字典会在运行时被动态更新
 EPISODE_START_POSITION = {
-    "joint_0.pos": math.pi / 2,  # 90°
-    "joint_1.pos": 0.0,
-    "joint_2.pos": 0.0,
-    "joint_3.pos": 0.0,
-    "joint_4.pos": 0.0,
-    "joint_5.pos": 0.0,
+    "joint_0.pos": 1.5631,  # 默认值，会被 Episode 0 实际位置覆盖
+    "joint_1.pos": 0.0017,
+    "joint_2.pos": 0.0135,
+    "joint_3.pos": -0.0109,
+    "joint_4.pos": 0.0029,
+    "joint_5.pos": 0.0044,
     "gripper.pos": 0.0,
 }
-RETURN_TIME_SEC = 3.0  # 回位过渡时间（秒）
+RETURN_TIME_SEC = 5.0  # 回位过渡时间（秒），延长以降低运动速度，减少滤波器稳态误差
+STABILIZE_TIME_SEC = 3.0  # 回位后稳定等待时间（秒），让低通滤波器完全收敛
 
 
-def _return_to_start(follower, fps: int = 30, return_time: float = RETURN_TIME_SEC) -> None:
-    """渐进地将从臂移回标准起始位置，防止看门狗断线。"""
-    print("\n🔙 从臂回位中...")
-    steps = int(return_time * fps)
+
+def _return_to_start(
+    follower,
+    fps: int = 30,
+    return_time: float = RETURN_TIME_SEC,
+    dataset=None,
+    robot_observation_processor=None,
+    single_task: str = None,
+) -> None:
+    """
+    渐进地将从臂移回标准起始位置，实现 episode 间的自动回位。
+
+    功能说明：
+    1. 读取当前机械臂位置
+    2. 计算从当前位置到标准起始位置的轨迹
+    3. 使用线性插值生成平滑的运动轨迹
+    4. 逐步发送控制指令，避免突变导致看门狗超时
+    5. 确保夹爪回到关闭状态
+    6. 将回位过程的观测和动作记录到数据集
+
+    参数：
+        follower: ARXFollower 机械臂对象
+        fps: 控制频率（Hz），默认 30
+        return_time: 回位总时间（秒），默认 3.0
+        dataset: LeRobotDataset 对象，用于记录回位过程数据
+        robot_observation_processor: 观测处理器
+        single_task: 任务描述
+
+    目标位置：
+        动态学习的 Episode 0 起始位置
+        - 在 Episode 0 开始录制时自动记录
+        - 自动适应每次预定位的细微差异
+        - 无需手动更新代码中的固定值
+
+    注意事项：
+        - 回位过程会被录入当前 episode 的数据中
+        - 回位时间不宜过短，避免机械臂运动过快
+        - 使用线性插值保证运动平滑，防止 CAN 总线看门狗超时
+    """
+    print("\n🔙 从臂自动回位中...")
+    print(f"   目标位置: joint_0={EPISODE_START_POSITION['joint_0.pos']:.4f} rad (89.56°)")
+    print(f"   回位时间: {return_time:.1f} 秒")
+    if dataset is not None:
+        print(f"   📹 回位过程将被记录到数据集")
+
+    steps = int(return_time * fps)  # 计算总步数
+
     try:
+        # 获取当前位置
         obs = follower.get_observation()
         start = {k: obs[k] for k in EPISODE_START_POSITION}
+
+        # 显示当前位置与目标位置的差异
+        print(f"   当前位置: joint_0={start['joint_0.pos']:.4f} rad")
+        max_diff = max(abs(start[k] - EPISODE_START_POSITION[k]) for k in EPISODE_START_POSITION)
+        print(f"   最大差异: {max_diff:.4f} rad ({max_diff * 180 / 3.14159:.2f}°)")
+
+        # 逐步插值移动到目标位置
         for i in range(steps):
-            ratio = (i + 1) / steps
+            ratio = (i + 1) / steps  # 插值比例：0 → 1
+
+            # 线性插值：current_pos + (target_pos - current_pos) * ratio
             action = RobotAction({
                 k: start[k] + (EPISODE_START_POSITION[k] - start[k]) * ratio
                 for k in EPISODE_START_POSITION
             })
+
+            # 发送动作到机器人
             follower.send_action(action)
+
+            # 如果提供了 dataset，记录回位过程的数据
+            if dataset is not None and robot_observation_processor is not None:
+                try:
+                    # 获取当前观测
+                    obs_raw = follower.get_observation()
+
+                    # 处理观测
+                    obs_processed = robot_observation_processor(obs_raw)
+
+                    # 构建观测帧
+                    from lerobot.datasets.utils import build_dataset_frame
+                    from lerobot.utils.constants import OBS_STR, ACTION
+
+                    observation_frame = build_dataset_frame(dataset.features, obs_processed, prefix=OBS_STR)
+
+                    # 构建动作帧（使用发送的动作）
+                    action_frame = build_dataset_frame(dataset.features, action, prefix=ACTION)
+
+                    # 合并并添加到数据集
+                    frame = {**observation_frame, **action_frame, "task": single_task}
+                    dataset.add_frame(frame)
+                except Exception as e:
+                    # 只在第一次出错时打印，避免刷屏
+                    if i == 0:
+                        print(f"⚠️  记录回位数据失败: {e}")
+                        import traceback
+                        traceback.print_exc()
+
             time.sleep(1.0 / fps)
-        print("✅ 从臂已回到起始位置")
+
+            # 每秒显示一次进度
+            if (i + 1) % fps == 0:
+                progress = (i + 1) / steps * 100
+                print(f"   回位进度: {progress:.0f}%")
+
+        # 验证最终位置
+        final_obs = follower.get_observation()
+        final_diff = abs(final_obs['joint_0.pos'] - EPISODE_START_POSITION['joint_0.pos'])
+
+        if final_diff < 0.01:  # 差异小于 0.01 rad (约 0.57°)
+            print("✅ 从臂已精确回到起始位置")
+        else:
+            print(f"⚠️  从臂已回位，但存在 {final_diff:.4f} rad ({final_diff * 180 / 3.14159:.2f}°) 的偏差")
+
+        # 稳定等待：让低通滤波器完全收敛到目标位置
+        # 在回位过程结束后，由于低通滤波器的延迟，机械臂可能还在继续向目标移动
+        # 需要额外等待一段时间，持续发送目标位置指令，直到完全稳定
+        stabilize_steps = int(STABILIZE_TIME_SEC * fps)
+        if stabilize_steps > 0:
+            print(f"\n⏳ 稳定等待 {STABILIZE_TIME_SEC:.1f} 秒，让机械臂完全收敛到目标位置...")
+
+            for i in range(stabilize_steps):
+                # 持续发送目标位置指令
+                action = RobotAction(EPISODE_START_POSITION)
+                follower.send_action(action)
+
+                # 如果提供了 dataset，继续记录稳定过程
+                if dataset is not None and robot_observation_processor is not None:
+                    try:
+                        obs_raw = follower.get_observation()
+                        obs_processed = robot_observation_processor(obs_raw)
+
+                        from lerobot.datasets.utils import build_dataset_frame
+                        from lerobot.utils.constants import OBS_STR, ACTION
+
+                        observation_frame = build_dataset_frame(dataset.features, obs_processed, prefix=OBS_STR)
+                        action_frame = build_dataset_frame(dataset.features, action, prefix=ACTION)
+                        frame = {**observation_frame, **action_frame, "task": single_task}
+                        dataset.add_frame(frame)
+                    except Exception:
+                        pass  # 静默失败，避免刷屏
+
+                time.sleep(1.0 / fps)
+
+                # 每 0.5 秒显示一次进度
+                if (i + 1) % (fps // 2) == 0:
+                    progress = (i + 1) / stabilize_steps * 100
+                    print(f"   稳定进度: {progress:.0f}%")
+
+            # 验证稳定后的位置
+            stable_obs = follower.get_observation()
+            stable_diff = abs(stable_obs['joint_0.pos'] - EPISODE_START_POSITION['joint_0.pos'])
+
+            print(f"\n✅ 稳定完成，最终偏差: {stable_diff:.4f} rad ({stable_diff * 180 / 3.14159:.2f}°)")
+
     except Exception as e:
         print(f"⚠️  回位出错: {e}")
+        import traceback
+        traceback.print_exc()
+
 
 
 def _configure_cameras(serial_numbers: list[str]) -> None:
     """固定相机参数：自动白平衡，提高锐度和对比度。"""
     # top 相机对比度单独设置更高
-    contrast_map = {"406122070147": 70}
+    contrast_map = {"346522074669": 70}
     ctx = rs.context()
     devices = {d.get_info(rs.camera_info.serial_number): d for d in ctx.query_devices()}
     for sn in serial_numbers:
@@ -451,13 +629,13 @@ def main():
             height=480,
         ),
         "front": RealSenseCameraConfig(
-            serial_number_or_name="346522074669",  # 原 wrist 序列号
+            serial_number_or_name="336222072219",  # front 和 top 已对调
             fps=FPS,
             width=640,
             height=480,
         ),
         "top": RealSenseCameraConfig(
-            serial_number_or_name="406122070147",
+            serial_number_or_name="346522074669",  # front 和 top 已对调
             fps=FPS,
             width=640,
             height=480,
@@ -475,7 +653,7 @@ def main():
     from pathlib import Path
 
     leader_config = FeetechLeaderConfig(
-        port="/dev/ttyACM3",
+        port="/dev/ttyACM0",
         motor_ids=[1, 2, 3, 4, 5, 6],
         gripper_id=7,
         use_degrees=False,
@@ -560,8 +738,8 @@ def main():
         # 固定相机参数，避免自动白平衡/曝光导致画面偏色和对比度不稳定
         _configure_cameras([
             "347622073355",  # wrist
-            "346522074669",  # front
-            "406122070147",  # top
+            "336222072219",  # front
+            "346522074669",  # top
         ])
 
         print("✓ 机器人已连接")
@@ -603,13 +781,40 @@ def main():
                 follower.send_action(processed["action"])
                 if safe_processor.zero_aligned and not safe_processor.in_transition:
                     preposition_done = True
-                    print("\n✅ 预定位完成，自动开始数据采集")
-                    log_say("预定位完成，开始录制")
+                    print("\n✅ 预定位完成，等待低通滤波器收敛...")
+                    log_say("预定位完成，稳定中")
             except Exception as e:
                 print(f"预定位出错: {e}")
                 break
             import time
             time.sleep(1.0 / FPS)
+
+        # 预定位完成后，等待低通滤波器完全收敛
+        # 持续发送当前位置指令，让机械臂完全稳定
+        if preposition_done and not events["stop_recording"]:
+            stabilize_frames = int(2.0 * FPS)  # 等待 2 秒
+            print(f"⏳ 稳定等待 2.0 秒，让低通滤波器完全收敛...")
+
+            for i in range(stabilize_frames):
+                try:
+                    obs = follower.get_observation()
+                    leader_obs = leader.get_observation()
+                    action_raw = RobotAction({k: leader_obs[k] for k in leader_obs})
+                    obs_raw = RobotObservation({k: obs[k] for k in obs})
+                    transition = {"action": action_raw, "observation": obs_raw}
+                    processed = safe_processor(transition)
+                    follower.send_action(processed["action"])
+                except Exception:
+                    pass
+                time.sleep(1.0 / FPS)
+
+                # 每 0.5 秒显示一次进度
+                if (i + 1) % (FPS // 2) == 0:
+                    progress = (i + 1) / stabilize_frames * 100
+                    print(f"   稳定进度: {progress:.0f}%")
+
+            print("✅ 稳定完成，开始数据采集")
+            log_say("开始录制")
 
         # 录制循环
         episode_idx = 0
@@ -619,6 +824,33 @@ def main():
             print(f"  events 状态: exit_early={events['exit_early']} stop_recording={events['stop_recording']}")
             print(f"{'=' * 60}\n")
             log_say(f"录制 episode {episode_idx + 1} / {NUM_EPISODES}")
+
+            # ============================================================
+            # Episode 0 特殊处理：初始化回位目标
+            # ============================================================
+            # 在 Episode 0 开始前，先使用当前位置作为临时目标
+            # 录制完成后会从数据集第一帧读取实际位置并更新
+            if episode_idx == 0:
+                print("\n📍 初始化 Episode 0 回位目标（录制后将从数据集更新）...")
+                try:
+                    # 读取当前从臂位置作为临时目标
+                    obs = follower.get_observation()
+
+                    # 临时设置起始位置
+                    EPISODE_START_POSITION["joint_0.pos"] = obs["joint_0.pos"]
+                    EPISODE_START_POSITION["joint_1.pos"] = obs["joint_1.pos"]
+                    EPISODE_START_POSITION["joint_2.pos"] = obs["joint_2.pos"]
+                    EPISODE_START_POSITION["joint_3.pos"] = obs["joint_3.pos"]
+                    EPISODE_START_POSITION["joint_4.pos"] = obs["joint_4.pos"]
+                    EPISODE_START_POSITION["joint_5.pos"] = obs["joint_5.pos"]
+                    EPISODE_START_POSITION["gripper.pos"] = 0.0  # 夹爪始终设为关闭
+
+                    print("✓ 临时回位目标已设置（录制完成后将更新为实际第一帧位置）")
+                    print()
+                except Exception as e:
+                    print(f"⚠️  初始化回位目标失败: {e}")
+                    print("   将使用默认回位位置")
+
             # 确保进入 record_loop 前 exit_early 为 False
             events["exit_early"] = False
             # 第二轮起重置零位对齐，从当前位置继续（不重新应用偏移）
@@ -646,10 +878,68 @@ def main():
                 traceback.print_exc()
                 break
 
-            # 保存 episode
+            # ============================================================
+            # Episode 结束后的自动回位处理
+            # ============================================================
+            # 目的：
+            # 1. 确保下一个 episode 从相同的起始位置开始
+            # 2. 实现 episode 间的连续性，减少人工干预
+            # 3. 将夹爪复位到关闭状态
+            #
+            # 回位策略：
+            # - 使用第一组数据的实际起始位置作为标准位置
+            # - 通过线性插值生成平滑轨迹，避免机械臂突变
+            # - 回位过程会被录入当前 episode 的数据中
+            #
+            # 注意：回位后需要保存 episode，这样下一个 episode
+            # 开始时机械臂已经在正确的起始位置
+            # ============================================================
+
+            # ============================================================
+            # Episode 0 特殊处理：从数据集读取第一帧位置
+            # ============================================================
+            # 在 Episode 0 录制完成后，从数据集缓存读取第一帧位置
+            # 用于后续 episode 的回位目标
+            if episode_idx == 0 and dataset is not None:
+                print("\n📍 从 Episode 0 数据集读取第一帧位置...")
+                try:
+                    # dataset 内部维护了当前 episode 的帧缓存
+                    # 尝试从缓存读取第一帧
+                    if hasattr(dataset, '_current_episode') and len(dataset._current_episode) > 0:
+                        first_frame = dataset._current_episode[0]
+
+                        # 更新回位目标
+                        EPISODE_START_POSITION["joint_0.pos"] = first_frame["observation.joint_0.pos"]
+                        EPISODE_START_POSITION["joint_1.pos"] = first_frame["observation.joint_1.pos"]
+                        EPISODE_START_POSITION["joint_2.pos"] = first_frame["observation.joint_2.pos"]
+                        EPISODE_START_POSITION["joint_3.pos"] = first_frame["observation.joint_3.pos"]
+                        EPISODE_START_POSITION["joint_4.pos"] = first_frame["observation.joint_4.pos"]
+                        EPISODE_START_POSITION["joint_5.pos"] = first_frame["observation.joint_5.pos"]
+                        EPISODE_START_POSITION["gripper.pos"] = 0.0
+
+                        print("✓ Episode 0 第一帧位置已读取并设为回位目标:")
+                        print(f"  joint_5: {EPISODE_START_POSITION['joint_5.pos']:.4f} rad ({EPISODE_START_POSITION['joint_5.pos'] * 180 / 3.14159:.2f}°)")
+                        print()
+                    else:
+                        print("⚠️  无法访问 dataset 缓存，将使用临时目标")
+                except Exception as e:
+                    print(f"⚠️  读取第一帧失败: {e}")
+                    print("   将使用临时目标")
+                    import traceback
+                    traceback.print_exc()
+
             print(f"\n{'=' * 60}")
-            print(f"保存 Episode {episode_idx}")
+            print(f"Episode {episode_idx} 录制完成 → 自动回位 → 保存数据")
             print(f"{'=' * 60}")
+
+            # 自动回位到标准起始位置（3秒平滑过渡），并记录回位过程
+            _return_to_start(
+                follower,
+                fps=FPS,
+                dataset=dataset,
+                robot_observation_processor=robot_observation_processor,
+                single_task=TASK_DESCRIPTION,
+            )
 
             if dataset is not None:
                 try:
@@ -671,21 +961,39 @@ def main():
             # 重置 exit_early 标志，准备下一个 episode
             events["exit_early"] = False
 
-            # 等待环境复位确认，再开始下一组
+            # ============================================================
+            # 等待开始下一个 episode
+            # ============================================================
+            # 此时机械臂已经回到标准起始位置，等待用户确认环境复位
+            # （例如：重新摆放物品、调整场景等）
+            #
+            # 在等待期间：
+            # - 持续发送起始位置指令，保持机械臂位置稳定
+            # - 防止 ARX 看门狗超时导致控制断开
+            # - 用户在控制终端按 'n' 开始下一组录制，或按 'e' 退出
+            # ============================================================
+
             if episode_idx < NUM_EPISODES and not events["stop_recording"]:
-                # 自动回到起始位置
-                _return_to_start(follower, fps=FPS)
-                print(f"\n⏸  环境复位后在控制终端按 n 开始下一组录制（Episode {episode_idx}）")
-                print("   或按 e 退出录制")
+                print(f"\n⏸  机械臂已回到起始位置，等待开始 Episode {episode_idx}")
+                print(f"   请在控制终端输入命令：")
+                print(f"     n - 开始录制下一组 (Episode {episode_idx})")
+                print(f"     e - 保存并退出录制")
+                print(f"\n   💡 提示：机械臂将保持在起始位置，可以调整场景后再开始")
+
                 events["next_episode"] = False
+
                 # 持续保持起始位置，防止 ARX 看门狗超时断开控制
+                # 每 1/FPS 秒发送一次位置指令
                 while not events["next_episode"] and not events["stop_recording"]:
                     try:
                         follower.send_action(RobotAction(EPISODE_START_POSITION))
                     except Exception:
                         pass
                     time.sleep(1 / FPS)
+
                 events["next_episode"] = False
+                print(f"\n▶️  开始录制 Episode {episode_idx}...")
+
 
     finally:
         # 退出前回到起始位置
